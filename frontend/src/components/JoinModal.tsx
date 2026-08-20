@@ -35,7 +35,8 @@ export const JoinModal: React.FC<JoinModalProps> = ({ roomId }) => {
     setError(null);
     setIsSubmitting(true);
 
-    socketClient.joinRoom(roomId, nicknameInput.trim(), myPlayerId || undefined);
+    const hostPlayerId = localStorage.getItem(`pixel_party_host_${roomId}`) || myPlayerId || undefined;
+    socketClient.joinRoom(roomId, nicknameInput.trim(), hostPlayerId);
 
     // Timeout reset
     setTimeout(() => setIsSubmitting(false), 2000);

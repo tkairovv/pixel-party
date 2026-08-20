@@ -41,12 +41,13 @@ export function App() {
 
   useEffect(() => {
     if (urlRoomId) {
+      const hostPlayerId = localStorage.getItem(`pixel_party_host_${urlRoomId}`) || myPlayerId || undefined;
       // If we haven't joined the room or don't have our player registered yet, prompt join modal
       if (!myPlayerId || !nickname || room?.id !== urlRoomId) {
         setJoinModalOpen(true);
         // Auto-join if we already have stored credentials
         if (nickname) {
-          socketClient.joinRoom(urlRoomId, nickname, myPlayerId || undefined);
+          socketClient.joinRoom(urlRoomId, nickname, hostPlayerId);
         }
       }
     }

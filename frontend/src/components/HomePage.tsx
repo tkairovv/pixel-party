@@ -25,6 +25,8 @@ export const HomePage: React.FC<HomePageProps> = ({ onNavigateRoom }) => {
       }
 
       const data = await res.json();
+      localStorage.setItem('pixel_party_player_id', data.hostId);
+      localStorage.setItem(`pixel_party_host_${data.roomId}`, data.hostId);
       onNavigateRoom(data.roomId);
     } catch (err: any) {
       showToast(err.message || 'Error creating room', 'error');

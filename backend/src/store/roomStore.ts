@@ -142,9 +142,11 @@ export class RoomStore {
     roomData.players.set(playerId, player);
     roomData.socketToPlayer.set(socketId, playerId);
     roomData.playerToSocket.set(playerId, socketId);
-    roomData.pixelStats.set(playerId, 0);
+    // If this is the first player joining, or host hasn't claimed a profile yet, assign host
+    if (roomData.players.size === 1 || !roomData.players.has(roomData.room.hostId)) {
+      roomData.room.hostId = playerId;
+    }
 
-    // If hostId hasn't claimed a profile yet, assign host
     const isHost = roomData.room.hostId === playerId;
 
     return {

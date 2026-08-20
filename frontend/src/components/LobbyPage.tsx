@@ -10,8 +10,10 @@ interface LobbyPageProps {
 }
 
 export const LobbyPage: React.FC<LobbyPageProps> = ({ roomId }) => {
-  const { room, players, isHost } = useRoomStore();
+  const { room, players, isHost: isHostStore } = useRoomStore();
   const { myPlayerId } = usePlayerStore();
+
+  const isHost = isHostStore || (room?.hostId === myPlayerId);
 
   const handleStartGame = () => {
     socketClient.startGame(roomId);
