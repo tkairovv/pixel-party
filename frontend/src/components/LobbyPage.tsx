@@ -22,7 +22,7 @@ export const LobbyPage: React.FC<LobbyPageProps> = ({ roomId }) => {
   const activePlayers = players.filter((p) => p.connected);
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col items-center justify-between p-4 sm:p-8 relative overflow-hidden">
+    <div className="min-h-[100dvh] bg-slate-950 text-slate-100 flex flex-col items-center justify-between p-3 sm:p-8 relative overflow-x-hidden overflow-y-auto">
       {/* Glow */}
       <div className="absolute top-1/3 left-1/2 -translate-x-1/2 w-[32rem] h-[32rem] bg-indigo-600/15 rounded-full blur-3xl pointer-events-none" />
 
@@ -44,17 +44,17 @@ export const LobbyPage: React.FC<LobbyPageProps> = ({ roomId }) => {
       </header>
 
       {/* Main Lobby Card */}
-      <main className="w-full max-w-md my-auto z-10 py-4">
-        <div className="bg-slate-900/90 border-2 border-indigo-500/30 rounded-3xl p-6 sm:p-8 shadow-2xl backdrop-blur-xl flex flex-col items-center text-center">
+      <main className="w-full max-w-md my-auto z-10 py-2">
+        <div className="bg-slate-900/90 border-2 border-indigo-500/30 rounded-3xl p-5 sm:p-8 shadow-2xl backdrop-blur-xl flex flex-col items-center text-center">
           {/* Title */}
-          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-indigo-500/10 border border-indigo-500/30 text-indigo-300 text-xs font-bold uppercase tracking-wider mb-5">
+          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-indigo-500/10 border border-indigo-500/30 text-indigo-300 text-xs font-bold uppercase tracking-wider mb-4">
             <Sparkles className="w-3 h-3" />
             <span>Scan to Join</span>
           </div>
 
           {/* QR Code */}
-          <div className="mb-6">
-            <QRCodeDisplay roomId={roomId} size={210} />
+          <div className="mb-5">
+            <QRCodeDisplay roomId={roomId} size={180} />
           </div>
 
           {/* Connected Players List */}

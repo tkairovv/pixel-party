@@ -9,6 +9,7 @@ import {
   pixelKey,
   PixelBatchItem,
 } from '@pixel-party/shared';
+import { ZoomIn, ZoomOut, Maximize2 } from 'lucide-react';
 
 interface PixelCanvasProps {
   roomId: string;
@@ -16,7 +17,7 @@ interface PixelCanvasProps {
 
 export const PixelCanvas: React.FC<PixelCanvasProps> = ({ roomId }) => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const containerRef = useRef<HTMLDivElement | null>(null);
+  const viewportRef = useRef<HTMLDivElement | null>(null);
 
   const {
     width,
@@ -25,6 +26,7 @@ export const PixelCanvas: React.FC<PixelCanvasProps> = ({ roomId }) => {
     brushSize,
     selectedColor,
     zoom,
+    setZoom,
     showGrid,
     pixels,
     subscribeChanges,
@@ -34,14 +36,38 @@ export const PixelCanvas: React.FC<PixelCanvasProps> = ({ roomId }) => {
   const { myPlayerId, selectedFilterPlayerId, hoveredPlayerId } = usePlayerStore();
   const { room } = useRoomStore();
 
+  // Navigation & Drawing State
   const [isDrawing, setIsDrawing] = useState(false);
-  const lastCoordRef = useRef<{ x: number; y: number } | null>(null);
-  const currentBatchRef = useRef<PixelBatchItem[]>([]);
-  const batchOpIdRef = useRef<string | null>(null);
-  const batchTimerRef = useRef<any>(null);
   const [hoverCoord, setHoverCoord] = useState<{ x: number; y: number } | null>(null);
+  const lastCoordRef = useRef<{ x: number; y: number } | null>(null);
 
-  // Render a specific pixel onto the canvas context
+  // Batch queue for high-speed network synchronization
+  const currentBatchRef = useRef<PixelBatchItem[]>([]);
+  const batchTimerRef = useRef<any>(null);
+
+  // Touch tracking for pinch-to-zoom & pan
+  const touchStartDistRef = useRef<number | null>(null);
+  const initialZoomRef = useRef<number>(zoom);
+
+  // Auto-fit initial zoom on mount or dimension change
+  const autoFitZoom = useCallback(() => {
+    if (!viewportRef.current) return;
+    const rect = viewportRef.current.getBoundingClientRect();
+    const availableWidth = Math.max(260, rect.width - 24);
+    const availableHeight = Math.max(260, rect.height - 40);
+
+    const fitZoom = Math.max(
+      2,
+      Math.floor(Math.min(availableWidth / width, availableHeight / height))
+    );
+    setZoom(fitZoom);
+  }, [width, height, setZoom]);
+
+  useEffect(() => {
+    autoFitZoom();
+  }, [autoFitZoom]);
+
+  // Render an individual pixel directly on the canvas context
   const renderPixel = useCallback(
     (
       ctx: CanvasRenderingContext2D,
@@ -58,7 +84,7 @@ export const PixelCanvas: React.FC<PixelCanvasProps> = ({ roomId }) => {
       const py = y * cellSize;
 
       if (!pixel || !pixel.color) {
-        // Empty pixel (white background)
+        // Empty pixel (crisp white)
         ctx.fillStyle = '#FFFFFF';
         ctx.fillRect(px, py, cellSize, cellSize);
       } else {
@@ -67,11 +93,10 @@ export const PixelCanvas: React.FC<PixelCanvasProps> = ({ roomId }) => {
         const isHovered = activeHover !== null && pixel.ownerId === activeHover;
 
         if (isTargetFilter || isHovered) {
-          // Full vibrant color
           ctx.fillStyle = pixel.color;
           ctx.fillRect(px, py, cellSize, cellSize);
         } else {
-          // Dimmed color for player filtering
+          // Dimmed for other players when a filter is active
           ctx.fillStyle = '#FFFFFF';
           ctx.fillRect(px, py, cellSize, cellSize);
 
@@ -84,8 +109,8 @@ export const PixelCanvas: React.FC<PixelCanvasProps> = ({ roomId }) => {
       }
 
       // Draw grid line if enabled and zoom is sufficiently large
-      if (showGrid && cellSize >= 6) {
-        ctx.strokeStyle = 'rgba(0, 0, 0, 0.07)';
+      if (showGrid && cellSize >= 5) {
+        ctx.strokeStyle = 'rgba(0, 0, 0, 0.08)';
         ctx.lineWidth = 1;
         ctx.strokeRect(px + 0.5, py + 0.5, cellSize - 1, cellSize - 1);
       }
@@ -93,7 +118,7 @@ export const PixelCanvas: React.FC<PixelCanvasProps> = ({ roomId }) => {
     [pixels, zoom, showGrid]
   );
 
-  // Full Canvas Repaint
+  // Full canvas repaint
   const renderFullCanvas = useCallback(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -113,7 +138,7 @@ export const PixelCanvas: React.FC<PixelCanvasProps> = ({ roomId }) => {
     }
   }, [width, height, renderPixel, selectedFilterPlayerId, hoveredPlayerId]);
 
-  // Subscribe to granular store updates for high-performance selective repaints
+  // Subscribe to granular store updates for high-performance direct canvas updates
   useEffect(() => {
     const unsubscribe = subscribeChanges((keys) => {
       const canvas = canvasRef.current;
@@ -139,21 +164,18 @@ export const PixelCanvas: React.FC<PixelCanvasProps> = ({ roomId }) => {
     return () => unsubscribe();
   }, [subscribeChanges, renderFullCanvas, renderPixel, selectedFilterPlayerId, hoveredPlayerId]);
 
-  // Trigger full repaint on filter or zoom changes
+  // Repaint when visual filter, zoom, or dimensions change
   useEffect(() => {
     renderFullCanvas();
-  }, [renderFullCanvas, selectedFilterPlayerId, hoveredPlayerId, zoom, showGrid]);
+  }, [renderFullCanvas, selectedFilterPlayerId, hoveredPlayerId, zoom, showGrid, width, height]);
 
-  // Flush queued batch of drawn pixels to the server
+  // Flush queued strokes to server with unique operationId
   const flushBatch = useCallback(() => {
-    if (currentBatchRef.current.length > 0 && batchOpIdRef.current) {
-      socketClient.drawBatch(
-        roomId,
-        batchOpIdRef.current,
-        [...currentBatchRef.current]
-      );
+    if (currentBatchRef.current.length > 0) {
+      const batchToSend = [...currentBatchRef.current];
       currentBatchRef.current = [];
-      batchOpIdRef.current = null;
+      const opId = generateOperationId();
+      socketClient.drawBatch(roomId, opId, batchToSend);
     }
     if (batchTimerRef.current) {
       clearTimeout(batchTimerRef.current);
@@ -161,24 +183,12 @@ export const PixelCanvas: React.FC<PixelCanvasProps> = ({ roomId }) => {
     }
   }, [roomId]);
 
-  // Get logical pixel coordinates from Mouse/Touch Event
-  const getCanvasCoords = (e: React.MouseEvent | React.TouchEvent): { x: number; y: number } | null => {
+  // Translate pointer client coordinates to logical canvas grid (x, y)
+  const getCanvasCoords = (clientX: number, clientY: number): { x: number; y: number } | null => {
     const canvas = canvasRef.current;
     if (!canvas) return null;
 
     const rect = canvas.getBoundingClientRect();
-    let clientX = 0;
-    let clientY = 0;
-
-    if ('touches' in e) {
-      if (e.touches.length === 0) return null;
-      clientX = e.touches[0].clientX;
-      clientY = e.touches[0].clientY;
-    } else {
-      clientX = e.clientX;
-      clientY = e.clientY;
-    }
-
     const scaleX = canvas.width / rect.width;
     const scaleY = canvas.height / rect.height;
 
@@ -195,7 +205,7 @@ export const PixelCanvas: React.FC<PixelCanvasProps> = ({ roomId }) => {
     return { x: logicalX, y: logicalY };
   };
 
-  // Draw continuous stroke using Bresenham interpolation
+  // Draw continuous stroke using Bresenham line interpolation
   const drawStrokeTo = useCallback(
     (targetCoord: { x: number; y: number }) => {
       if (!myPlayerId || room?.status !== 'playing') return;
@@ -219,21 +229,17 @@ export const PixelCanvas: React.FC<PixelCanvasProps> = ({ roomId }) => {
         color: colorToApply,
       }));
 
-      if (!batchOpIdRef.current) {
-        batchOpIdRef.current = generateOperationId();
-      }
-
-      // 1. Optimistic local painting
+      // 1. Instant optimistic local painting
       applyOptimisticBatch(batchItems, myPlayerId);
 
       // 2. Add to batch queue
       currentBatchRef.current.push(...batchItems);
 
-      // 3. Debounced or threshold flush
-      if (currentBatchRef.current.length >= 25) {
+      // 3. Fast flush threshold: every 20ms or when 15 pixels queued
+      if (currentBatchRef.current.length >= 15) {
         flushBatch();
       } else if (!batchTimerRef.current) {
-        batchTimerRef.current = setTimeout(flushBatch, 30);
+        batchTimerRef.current = setTimeout(flushBatch, 20);
       }
 
       lastCoordRef.current = targetCoord;
@@ -251,35 +257,97 @@ export const PixelCanvas: React.FC<PixelCanvasProps> = ({ roomId }) => {
     ]
   );
 
-  // Mouse & Touch Event Handlers
-  const handlePointerDown = (e: React.MouseEvent | React.TouchEvent) => {
+  // Mouse Handlers
+  const handleMouseDown = (e: React.MouseEvent) => {
+    if (e.button !== 0) return; // only left click
     if (room?.status !== 'playing') return;
-    const coord = getCanvasCoords(e);
+
+    const coord = getCanvasCoords(e.clientX, e.clientY);
     if (!coord) return;
 
     setIsDrawing(true);
     lastCoordRef.current = coord;
-    batchOpIdRef.current = generateOperationId();
     drawStrokeTo(coord);
   };
 
-  const handlePointerMove = (e: React.MouseEvent | React.TouchEvent) => {
-    const coord = getCanvasCoords(e);
-    if (coord) {
-      setHoverCoord(coord);
-    } else {
-      setHoverCoord(null);
-    }
+  const handleMouseMove = (e: React.MouseEvent) => {
+    const coord = getCanvasCoords(e.clientX, e.clientY);
+    setHoverCoord(coord);
 
     if (!isDrawing || !coord) return;
     drawStrokeTo(coord);
   };
 
-  const handlePointerUp = () => {
+  const handleMouseUp = () => {
     if (isDrawing) {
       setIsDrawing(false);
       lastCoordRef.current = null;
       flushBatch();
+    }
+  };
+
+  // Touch Handlers with 2-finger pinch-to-zoom
+  const handleTouchStart = (e: React.TouchEvent) => {
+    if (e.touches.length === 2) {
+      // 2 touches: start pinch zoom
+      setIsDrawing(false);
+      lastCoordRef.current = null;
+      flushBatch();
+      const dx = e.touches[0].clientX - e.touches[1].clientX;
+      const dy = e.touches[0].clientY - e.touches[1].clientY;
+      touchStartDistRef.current = Math.hypot(dx, dy);
+      initialZoomRef.current = zoom;
+      return;
+    }
+
+    if (e.touches.length === 1 && room?.status === 'playing') {
+      const touch = e.touches[0];
+      const coord = getCanvasCoords(touch.clientX, touch.clientY);
+      if (!coord) return;
+
+      setIsDrawing(true);
+      lastCoordRef.current = coord;
+      drawStrokeTo(coord);
+    }
+  };
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    if (e.touches.length === 2 && touchStartDistRef.current !== null) {
+      // Pinch zoom in action
+      const dx = e.touches[0].clientX - e.touches[1].clientX;
+      const dy = e.touches[0].clientY - e.touches[1].clientY;
+      const currentDist = Math.hypot(dx, dy);
+      const factor = currentDist / touchStartDistRef.current;
+      const newZoom = Math.max(2, Math.min(32, Math.round(initialZoomRef.current * factor)));
+      setZoom(newZoom);
+      return;
+    }
+
+    if (e.touches.length === 1 && isDrawing) {
+      const touch = e.touches[0];
+      const coord = getCanvasCoords(touch.clientX, touch.clientY);
+      if (coord) {
+        setHoverCoord(coord);
+        drawStrokeTo(coord);
+      }
+    }
+  };
+
+  const handleTouchEnd = () => {
+    touchStartDistRef.current = null;
+    if (isDrawing) {
+      setIsDrawing(false);
+      lastCoordRef.current = null;
+      flushBatch();
+    }
+  };
+
+  // Mouse wheel zoom
+  const handleWheel = (e: React.WheelEvent) => {
+    if (e.ctrlKey || e.metaKey || e.altKey) {
+      e.preventDefault();
+      const delta = e.deltaY < 0 ? 1 : -1;
+      setZoom((z) => Math.max(2, Math.min(32, z + delta)));
     }
   };
 
@@ -288,45 +356,69 @@ export const PixelCanvas: React.FC<PixelCanvasProps> = ({ roomId }) => {
 
   return (
     <div
-      ref={containerRef}
-      className="relative flex-1 flex flex-col items-center justify-center p-2 sm:p-6 overflow-auto touch-none select-none"
+      ref={viewportRef}
+      onWheel={handleWheel}
+      className="relative flex-1 w-full h-full flex flex-col items-center justify-center p-1 sm:p-4 overflow-auto touch-none select-none"
     >
-      {/* Canvas Frame */}
-      <div className="relative rounded-2xl shadow-2xl p-2.5 bg-slate-900 border-2 border-indigo-500/30 flex flex-col items-center">
-        {/* Top Info Bar on Canvas */}
-        <div className="w-full flex items-center justify-between px-2 py-1 mb-2 text-[11px] font-mono text-slate-400 border-b border-slate-800">
-          <div className="flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-indigo-400" />
-            <span>Canvas: {width}×{height}</span>
-          </div>
-          <div>
-            {hoverCoord ? (
-              <span className="text-amber-400 font-bold">
-                X: {hoverCoord.x}, Y: {hoverCoord.y}
-              </span>
-            ) : (
-              <span>Zoom: {zoom}x</span>
-            )}
-          </div>
-        </div>
+      {/* Floating Canvas Controls Overlay */}
+      <div className="absolute top-3 left-3 z-10 flex items-center gap-1.5 p-1 bg-slate-900/90 border border-slate-800 rounded-xl shadow-lg backdrop-blur-md">
+        <button
+          type="button"
+          onClick={() => setZoom((z) => Math.max(2, z - 2))}
+          title="Zoom Out"
+          className="p-1.5 text-slate-300 hover:text-white rounded-lg hover:bg-slate-800 active:scale-95"
+        >
+          <ZoomOut className="w-4 h-4" />
+        </button>
 
-        {/* HTML Canvas Element */}
+        <span className="text-[11px] font-mono font-bold px-1 text-indigo-300 min-w-[28px] text-center">
+          {zoom}x
+        </span>
+
+        <button
+          type="button"
+          onClick={() => setZoom((z) => Math.min(32, z + 2))}
+          title="Zoom In"
+          className="p-1.5 text-slate-300 hover:text-white rounded-lg hover:bg-slate-800 active:scale-95"
+        >
+          <ZoomIn className="w-4 h-4" />
+        </button>
+
+        <button
+          type="button"
+          onClick={autoFitZoom}
+          title="Fit Canvas to Screen"
+          className="p-1.5 text-slate-300 hover:text-white rounded-lg hover:bg-slate-800 active:scale-95 border-l border-slate-800 ml-0.5"
+        >
+          <Maximize2 className="w-4 h-4 text-amber-400" />
+        </button>
+      </div>
+
+      {/* Coordinate Tooltip */}
+      {hoverCoord && (
+        <div className="absolute top-3 right-3 z-10 px-2.5 py-1 bg-slate-900/90 border border-slate-800 rounded-xl text-[11px] font-mono font-bold text-amber-400 shadow-md backdrop-blur-md">
+          {hoverCoord.x}, {hoverCoord.y}
+        </div>
+      )}
+
+      {/* Canvas Container */}
+      <div className="relative rounded-2xl shadow-2xl p-1.5 sm:p-2 bg-slate-900 border-2 border-indigo-500/30 flex items-center justify-center max-w-full max-h-full">
         <div className="relative overflow-hidden rounded-lg shadow-inner bg-white border border-slate-700">
           <canvas
             ref={canvasRef}
             width={canvasPixelWidth}
             height={canvasPixelHeight}
-            onMouseDown={handlePointerDown}
-            onMouseMove={handlePointerMove}
-            onMouseUp={handlePointerUp}
+            onMouseDown={handleMouseDown}
+            onMouseMove={handleMouseMove}
+            onMouseUp={handleMouseUp}
             onMouseLeave={() => {
-              handlePointerUp();
+              handleMouseUp();
               setHoverCoord(null);
             }}
-            onTouchStart={handlePointerDown}
-            onTouchMove={handlePointerMove}
-            onTouchEnd={handlePointerUp}
-            onTouchCancel={handlePointerUp}
+            onTouchStart={handleTouchStart}
+            onTouchMove={handleTouchMove}
+            onTouchEnd={handleTouchEnd}
+            onTouchCancel={handleTouchEnd}
             className="cursor-crosshair block touch-none"
             style={{
               width: `${canvasPixelWidth}px`,

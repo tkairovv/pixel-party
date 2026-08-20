@@ -10,9 +10,9 @@ export class SocketRateLimiter {
   private maxTokens: number;
   private refillRatePerMs: number;
 
-  constructor(maxTokensPerSec = config.rateLimitMaxPixelsPerSec) {
-    this.maxTokens = maxTokensPerSec;
-    this.refillRatePerMs = maxTokensPerSec / 1000;
+  constructor(maxTokensPerSec = 5000) {
+    this.maxTokens = Math.max(maxTokensPerSec, 5000);
+    this.refillRatePerMs = this.maxTokens / 1000;
   }
 
   public allow(socketId: string, tokensRequested = 1): boolean {

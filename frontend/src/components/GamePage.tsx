@@ -49,12 +49,12 @@ export const GamePage: React.FC<GamePageProps> = ({ roomId }) => {
   };
 
   return (
-    <div className="h-screen w-screen flex flex-col bg-slate-950 text-slate-100 overflow-hidden select-none">
+    <div className="h-[100dvh] w-screen max-w-full flex flex-col bg-slate-950 text-slate-100 overflow-hidden select-none">
       {/* Top Header */}
       <GameHeader roomId={roomId} />
 
       {/* Main Workspace Layout */}
-      <div className="flex-1 flex overflow-hidden p-2 sm:p-4 gap-3">
+      <div className="flex-1 flex overflow-hidden p-1.5 sm:p-4 gap-3 min-h-0">
         {/* Left: Desktop Toolbar */}
         <Toolbar />
 

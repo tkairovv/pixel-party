@@ -8,6 +8,7 @@ interface HomePageProps {
 
 export const HomePage: React.FC<HomePageProps> = ({ onNavigateRoom }) => {
   const [joinCode, setJoinCode] = useState('');
+  const [selectedSize, setSelectedSize] = useState<number>(64);
   const [isCreating, setIsCreating] = useState(false);
   const { showToast } = useUIStore();
 
@@ -17,7 +18,7 @@ export const HomePage: React.FC<HomePageProps> = ({ onNavigateRoom }) => {
       const res = await fetch('/api/rooms', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ width: 64, height: 64 }),
+        body: JSON.stringify({ width: selectedSize, height: selectedSize }),
       });
 
       if (!res.ok) {
@@ -46,7 +47,7 @@ export const HomePage: React.FC<HomePageProps> = ({ onNavigateRoom }) => {
   };
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col items-center justify-between p-4 sm:p-8 relative overflow-hidden">
+    <div className="min-h-[100dvh] bg-slate-950 text-slate-100 flex flex-col items-center justify-between p-4 sm:p-8 relative overflow-x-hidden overflow-y-auto">
       {/* Background ambient lighting */}
       <div className="absolute top-1/4 left-1/2 -translate-x-1/2 w-96 h-96 bg-indigo-600/15 rounded-full blur-3xl pointer-events-none" />
       <div className="absolute bottom-10 left-10 w-72 h-72 bg-pink-600/10 rounded-full blur-3xl pointer-events-none" />
@@ -88,9 +89,32 @@ export const HomePage: React.FC<HomePageProps> = ({ onNavigateRoom }) => {
           </span>
         </h1>
 
-        <p className="text-base sm:text-lg text-slate-300 max-w-lg mx-auto mb-10 leading-relaxed font-medium">
+        <p className="text-base sm:text-lg text-slate-300 max-w-lg mx-auto mb-6 leading-relaxed font-medium">
           Create a room, share the QR code with your friends on phone or desktop, and draw on a shared canvas with full pixel ownership and player filtering!
         </p>
+
+        {/* Canvas Size Selector */}
+        <div className="max-w-lg mx-auto mb-6 p-3 bg-slate-900/80 border border-slate-800 rounded-2xl flex items-center justify-between gap-2">
+          <span className="text-xs font-bold uppercase tracking-wider text-slate-400 pl-2">
+            Grid Size:
+          </span>
+          <div className="flex gap-1.5">
+            {[32, 64, 128].map((size) => (
+              <button
+                key={size}
+                type="button"
+                onClick={() => setSelectedSize(size)}
+                className={`px-3.5 py-1.5 rounded-xl text-xs font-mono font-bold transition-all active:scale-95 ${
+                  selectedSize === size
+                    ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/30'
+                    : 'bg-slate-800 text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                {size}×{size}
+              </button>
+            ))}
+          </div>
+        </div>
 
         {/* Action Cards */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-lg mx-auto mb-12">
