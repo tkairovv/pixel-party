@@ -1,0 +1,43 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-slate-950 text-slate-100 antialiased select-none;
+    touch-action: none;
+    -webkit-touch-callout: none;
+  }
+}
+
+/* Custom retro pixel borders & scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #0f172a;
+}
+::-webkit-scrollbar-thumb {
+  background: #334155;
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #475569;
+}
+
+.pixel-shadow {
+  box-shadow: 4px 4px 0px 0px rgba(0, 0, 0, 0.6);
+}
+
+.pixel-shadow-sm {
+  box-shadow: 2px 2px 0px 0px rgba(0, 0, 0, 0.6);
+}
+
+.pixel-shadow-accent {
+  box-shadow: 4px 4px 0px 0px #4f46e5;
+}
+
+.pixel-font {
+  font-family: 'Press Start 2P', monospace, sans-serif;
+}
