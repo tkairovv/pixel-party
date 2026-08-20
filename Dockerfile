@@ -7,7 +7,7 @@ COPY shared/package*.json ./shared/
 COPY backend/package*.json ./backend/
 COPY frontend/package*.json ./frontend/
 
-RUN npm ci
+RUN npm install
 
 COPY . .
 
@@ -25,7 +25,7 @@ COPY shared/package*.json ./shared/
 COPY backend/package*.json ./backend/
 COPY frontend/package*.json ./frontend/
 
-RUN npm ci --omit=dev
+RUN npm install --omit=dev
 
 COPY --from=builder /app/shared/dist ./shared/dist
 COPY --from=builder /app/backend/dist ./backend/dist
