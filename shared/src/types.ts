@@ -1,4 +1,12 @@
-export type RoomStatus = 'waiting' | 'playing' | 'finished';
+export type RoomStatus = 'waiting' | 'playing' | 'revealing' | 'finished';
+export type GameMode = 'classic' | 'blind_mosaic';
+
+export interface MosaicConfig {
+  sectorsCount: number; // 2, 3, or 4
+  sectorTitles: string[]; // e.g. ["Голова 🎩", "Туловище 👕", "Ноги 👖"]
+  direction: 'horizontal' | 'vertical' | 'grid'; // horizontal cuts = top to bottom
+  roundDurationSeconds?: number;
+}
 
 export interface Player {
   id: string;
@@ -7,12 +15,16 @@ export interface Player {
   connected: boolean;
   joinedAt: number;
   pixelCount?: number;
+  teamSector?: number; // 0..N-1 sector index
 }
 
 export interface Room {
   id: string;
   hostId: string;
   status: RoomStatus;
+  gameMode: GameMode;
+  mosaicConfig?: MosaicConfig;
+  revealStep: number; // 0: none, 1: part 1, 2: part 2, 3: all, etc.
   sequence: number;
   width: number;
   height: number;
@@ -90,6 +102,7 @@ export interface CanvasClearedPayload {
 export interface GameStatusPayload {
   roomId: string;
   status: RoomStatus;
+  revealStep?: number;
 }
 
 export interface AppErrorPayload {

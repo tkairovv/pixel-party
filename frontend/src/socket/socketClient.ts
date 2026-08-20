@@ -8,6 +8,9 @@ import {
   CanvasClearedPayload,
   AppErrorPayload,
   PixelBatchItem,
+  GameMode,
+  MosaicConfig,
+  Room,
 } from '@pixel-party/shared';
 import { useRoomStore } from '../stores/roomStore.js';
 import { usePlayerStore } from '../stores/playerStore.js';
@@ -21,7 +24,6 @@ class SocketClient {
   public init(): Socket {
     if (this.socket) return this.socket;
 
-    // Use current origin in browser (proxied by Vite in dev) or explicit env
     const socketUrl = (import.meta as any).env?.VITE_BACKEND_URL || window.location.origin;
 
     this.socket = io(socketUrl, {
@@ -43,11 +45,9 @@ class SocketClient {
     this.socket.on('connect', () => {
       useUIStore.getState().setConnectionStatus('connected');
 
-      // If we were in a room, perform automatic resync
       if (this.currentRoomId) {
         const { myPlayerId, nickname } = usePlayerStore.getState();
         if (nickname) {
-          // Re-join session
           this.joinRoom(this.currentRoomId, nickname, myPlayerId || undefined);
         }
       }
@@ -84,7 +84,7 @@ class SocketClient {
       useUIStore.getState().showToast(`${player.nickname} joined the party!`, 'info');
     });
 
-    // Player list updated (connected status or pixel count changed)
+    // Player list updated
     this.socket.on('players:updated', (players: Player[]) => {
       useRoomStore.getState().setPlayers(players);
     });
@@ -93,9 +93,7 @@ class SocketClient {
     this.socket.on('pixel:updated', (update: PixelUpdate) => {
       const { lastAppliedSeq } = useCanvasStore.getState();
 
-      // Check for sequence gaps
       if (update.seq > lastAppliedSeq + 1 && lastAppliedSeq > 0) {
-        // Gap detected! Request delta resync
         if (this.currentRoomId) {
           this.syncCanvas(this.currentRoomId, lastAppliedSeq);
         }
@@ -115,6 +113,28 @@ class SocketClient {
       useCanvasStore.getState().applyBatchUpdates(updates);
     });
 
+    // Undo / Redo Status
+    this.socket.on('undo:status', (data: { canUndo: boolean; canRedo: boolean }) => {
+      useCanvasStore.getState().setUndoRedoStatus(data.canUndo, data.canRedo);
+    });
+
+    // Full Timelapse History
+    this.socket.on('timelapse:history', (data: { roomId: string; width: number; height: number; operations: PixelUpdate[] }) => {
+      useCanvasStore.getState().setTimelapseHistory(data.operations);
+    });
+
+    // Room Config Updated (Mode / Teams)
+    this.socket.on('room:config_updated', (data: { room: Room; players: Player[] }) => {
+      if (data.room) useRoomStore.getState().updateRoomConfig(data.room);
+      if (data.players) useRoomStore.getState().setPlayers(data.players);
+    });
+
+    // Game Status Changed (Revealing / Finished)
+    this.socket.on('game:status_changed', (data: { roomId: string; status: any; revealStep: number }) => {
+      useRoomStore.getState().setStatus(data.status);
+      useRoomStore.getState().setRevealStep(data.revealStep);
+    });
+
     // Canvas Delta / Snapshot Sync Response
     this.socket.on('canvas:sync_response', (res: CanvasSyncResponse) => {
       if (res.type === 'snapshot' && res.snapshot) {
@@ -127,13 +147,14 @@ class SocketClient {
     // Game Started
     this.socket.on('game:started', (payload: GameStatusPayload) => {
       useRoomStore.getState().setStatus(payload.status);
+      useRoomStore.getState().setRevealStep(payload.revealStep || 0);
       useUIStore.getState().showToast('The game has started! Start drawing! 🎨', 'success');
     });
 
     // Game Finished
     this.socket.on('game:finished', (payload: GameStatusPayload) => {
       useRoomStore.getState().setStatus(payload.status);
-      useUIStore.getState().showToast('Game finished! Check out the final art! 🏆', 'success');
+      useRoomStore.getState().setRevealStep(payload.revealStep || 0);
     });
 
     // Canvas Cleared
@@ -168,6 +189,30 @@ class SocketClient {
 
   public drawBatch(roomId: string, operationId: string, pixels: PixelBatchItem[]): void {
     this.init().emit('pixel:batch', { roomId, operationId, pixels });
+  }
+
+  public undo(roomId: string): void {
+    this.init().emit('pixel:undo', { roomId });
+  }
+
+  public redo(roomId: string): void {
+    this.init().emit('pixel:redo', { roomId });
+  }
+
+  public requestTimelapse(roomId: string): void {
+    this.init().emit('timelapse:request', { roomId });
+  }
+
+  public setGameMode(roomId: string, gameMode: GameMode, mosaicConfig?: MosaicConfig): void {
+    this.init().emit('game:set_mode', { roomId, gameMode, mosaicConfig });
+  }
+
+  public setTeam(roomId: string, playerId: string, sectorIndex: number): void {
+    this.init().emit('game:set_team', { roomId, playerId, sectorIndex });
+  }
+
+  public setRevealStep(roomId: string, step: number): void {
+    this.init().emit('game:reveal_step', { roomId, step });
   }
 
   public syncCanvas(roomId: string, lastAppliedSeq: number): void {

@@ -10,6 +10,7 @@ import { PlayersPanel } from './PlayersPanel.js';
 import { ColorPalette } from './ColorPalette.js';
 import { QRCodeDisplay } from './QRCodeDisplay.js';
 import { GameFinished } from './GameFinished.js';
+import { MosaicReveal } from './MosaicReveal.js';
 import { BrushSize } from '@pixel-party/shared';
 import {
   Pencil,
@@ -19,6 +20,7 @@ import {
   ZoomOut,
   X,
   AlertTriangle,
+  Undo2,
 } from 'lucide-react';
 
 interface GamePageProps {
@@ -33,6 +35,7 @@ export const GamePage: React.FC<GamePageProps> = ({ roomId }) => {
     brushSize,
     setBrushSize,
     setZoom,
+    canUndo,
   } = useCanvasStore();
 
   const {
@@ -46,6 +49,10 @@ export const GamePage: React.FC<GamePageProps> = ({ roomId }) => {
   const handleConfirmClear = () => {
     socketClient.clearCanvas(roomId);
     setClearModalOpen(false);
+  };
+
+  const handleUndo = () => {
+    socketClient.undo(roomId);
   };
 
   return (
@@ -99,6 +106,16 @@ export const GamePage: React.FC<GamePageProps> = ({ roomId }) => {
               <Eraser className="w-4 h-4" />
             </button>
 
+            {/* Mobile Undo */}
+            <button
+              type="button"
+              onClick={handleUndo}
+              disabled={!canUndo}
+              className="p-2 bg-slate-800 disabled:opacity-30 border border-slate-700 text-slate-300 rounded-xl"
+            >
+              <Undo2 className="w-4 h-4" />
+            </button>
+
             {/* Brush Size Toggle */}
             <button
               type="button"
@@ -116,80 +133,83 @@ export const GamePage: React.FC<GamePageProps> = ({ roomId }) => {
             {/* Zoom Controls */}
             <button
               type="button"
-              onClick={() => setZoom((z) => Math.max(4, z - 2))}
+              onClick={() => setZoom((z) => Math.max(2, z - 2))}
               className="p-2 bg-slate-800 border border-slate-700 text-slate-200 rounded-xl"
             >
               <ZoomOut className="w-4 h-4" />
             </button>
             <button
               type="button"
-              onClick={() => setZoom((z) => Math.min(24, z + 2))}
+              onClick={() => setZoom((z) => Math.min(32, z + 2))}
               className="p-2 bg-slate-800 border border-slate-700 text-slate-200 rounded-xl"
             >
               <ZoomIn className="w-4 h-4" />
             </button>
 
-            {/* Players Drawer Button */}
+            {/* Players Drawer Trigger */}
             <button
               type="button"
               onClick={() => setPlayersDrawerOpen(true)}
-              className="flex items-center gap-1 px-3 py-2 bg-indigo-600 text-white rounded-xl text-xs font-bold shadow-md"
+              className="p-2 bg-slate-800 border border-slate-700 text-indigo-400 rounded-xl"
             >
               <Users className="w-4 h-4" />
-              <span>Players</span>
             </button>
           </div>
         </div>
       </div>
 
-      {/* QR Code Modal (for inviting players during active game) */}
+      {/* QR Code Invite Modal */}
       {isQRModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md animate-in fade-in">
-          <div className="bg-slate-900 border-2 border-indigo-500/40 rounded-3xl p-6 shadow-2xl relative max-w-sm w-full text-center">
+          <div className="bg-slate-900 border-2 border-indigo-500/40 rounded-3xl p-6 shadow-2xl max-w-sm w-full text-center relative">
             <button
               onClick={() => setQRModalOpen(false)}
-              className="absolute top-4 right-4 p-1.5 text-slate-400 hover:text-white rounded-xl hover:bg-slate-800"
+              className="absolute top-4 right-4 p-2 text-slate-400 hover:text-white rounded-xl hover:bg-slate-800"
             >
               <X className="w-5 h-5" />
             </button>
-            <h3 className="text-base font-bold text-white mb-4">Invite Friends</h3>
-            <QRCodeDisplay roomId={roomId} size={190} />
+            <h3 className="text-lg font-bold text-white mb-1">Invite Friends</h3>
+            <p className="text-xs text-slate-400 mb-4">Scan QR code or use room code</p>
+            <div className="flex justify-center mb-4">
+              <QRCodeDisplay roomId={roomId} size={200} />
+            </div>
           </div>
         </div>
       )}
 
-      {/* Clear Canvas Confirmation Modal (Host only) */}
+      {/* Clear Canvas Confirmation Modal */}
       {isClearModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md animate-in fade-in">
-          <div className="bg-slate-900 border-2 border-rose-500/40 rounded-3xl p-6 shadow-2xl relative max-w-sm w-full text-center">
+          <div className="bg-slate-900 border-2 border-rose-500/40 rounded-3xl p-6 shadow-2xl max-w-sm w-full text-center relative">
             <div className="w-12 h-12 rounded-2xl bg-rose-500/20 text-rose-400 flex items-center justify-center mx-auto mb-3">
               <AlertTriangle className="w-6 h-6" />
             </div>
             <h3 className="text-lg font-bold text-white mb-1">Clear Canvas?</h3>
             <p className="text-xs text-slate-400 mb-6">
-              This will permanently erase all pixels on the canvas for all players.
+              This will wipe all pixels drawn by all players. This action cannot be undone.
             </p>
-            <div className="grid grid-cols-2 gap-2">
+            <div className="flex gap-2">
               <button
-                type="button"
                 onClick={() => setClearModalOpen(false)}
-                className="py-2.5 px-4 bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold rounded-xl text-xs uppercase"
+                className="flex-1 py-2.5 bg-slate-800 hover:bg-slate-700 rounded-xl text-xs font-semibold text-slate-300"
               >
                 Cancel
               </button>
               <button
-                type="button"
                 onClick={handleConfirmClear}
-                className="py-2.5 px-4 bg-rose-600 hover:bg-rose-500 text-white font-bold rounded-xl text-xs uppercase shadow-md shadow-rose-600/30"
+                className="flex-1 py-2.5 bg-rose-600 hover:bg-rose-500 rounded-xl text-xs font-semibold text-white shadow-lg shadow-rose-600/30"
               >
-                Clear All
+                Yes, Clear
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Game Finished Overlay & PNG Download */}
+      {/* Blind Mosaic Reveal Stage */}
+      {room?.status === 'revealing' && <MosaicReveal roomId={roomId} />}
+
+      {/* Game Finished Overlay */}
       {room?.status === 'finished' && <GameFinished roomId={roomId} />}
     </div>
   );

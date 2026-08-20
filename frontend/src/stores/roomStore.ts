@@ -5,8 +5,13 @@ interface RoomState {
   room: Room | null;
   players: Player[];
   isHost: boolean;
+  isHostPeekActive: boolean; // For host spectator toggle in Blind Mosaic mode
+
   setRoom: (room: Room, isHost: boolean) => void;
+  updateRoomConfig: (room: Room) => void;
   setStatus: (status: RoomStatus) => void;
+  setRevealStep: (step: number) => void;
+  toggleHostPeek: () => void;
   setPlayers: (players: Player[]) => void;
   addPlayer: (player: Player) => void;
   removePlayer: (playerId: string) => void;
@@ -17,11 +22,19 @@ export const useRoomStore = create<RoomState>((set) => ({
   room: null,
   players: [],
   isHost: false,
+  isHostPeekActive: false,
 
   setRoom: (room, isHost) => set({ room, isHost }),
 
+  updateRoomConfig: (room) => set({ room }),
+
   setStatus: (status) =>
     set((state) => (state.room ? { room: { ...state.room, status } } : {})),
+
+  setRevealStep: (revealStep) =>
+    set((state) => (state.room ? { room: { ...state.room, revealStep } } : {})),
+
+  toggleHostPeek: () => set((state) => ({ isHostPeekActive: !state.isHostPeekActive })),
 
   setPlayers: (players) => set({ players }),
 
@@ -43,5 +56,5 @@ export const useRoomStore = create<RoomState>((set) => ({
       ),
     })),
 
-  resetRoom: () => set({ room: null, players: [], isHost: false }),
+  resetRoom: () => set({ room: null, players: [], isHost: false, isHostPeekActive: false }),
 }));

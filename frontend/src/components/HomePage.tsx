@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
-import { Sparkles, Plus, ArrowRight, Paintbrush } from 'lucide-react';
+import { Sparkles, Plus, ArrowRight, Paintbrush, Scissors, Palette } from 'lucide-react';
 import { useUIStore } from '../stores/uiStore.js';
+import { GameMode, MosaicConfig } from '@pixel-party/shared';
 
 interface HomePageProps {
   onNavigateRoom: (roomId: string) => void;
@@ -9,16 +10,35 @@ interface HomePageProps {
 export const HomePage: React.FC<HomePageProps> = ({ onNavigateRoom }) => {
   const [joinCode, setJoinCode] = useState('');
   const [selectedSize, setSelectedSize] = useState<number>(64);
+  const [gameMode, setGameMode] = useState<GameMode>('blind_mosaic');
+  const [sectorsCount, setSectorsCount] = useState<number>(3);
   const [isCreating, setIsCreating] = useState(false);
   const { showToast } = useUIStore();
 
   const handleCreateRoom = async () => {
     try {
       setIsCreating(true);
+
+      const mosaicConfig: MosaicConfig | undefined = gameMode === 'blind_mosaic' ? {
+        sectorsCount,
+        sectorTitles: sectorsCount === 3
+          ? ['Голова 🎩', 'Туловище 👕', 'Ноги 👖']
+          : sectorsCount === 2
+          ? ['Верхняя часть ⬆️', 'Нижняя часть ⬇️']
+          : ['Сектор 1 ↖️', 'Сектор 2 ↗️', 'Сектор 3 ↙️', 'Сектор 4 ↘️'],
+        direction: sectorsCount === 4 ? 'grid' : 'horizontal',
+        roundDurationSeconds: 0,
+      } : undefined;
+
       const res = await fetch('/api/rooms', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ width: selectedSize, height: selectedSize }),
+        body: JSON.stringify({
+          width: selectedSize,
+          height: selectedSize,
+          gameMode,
+          mosaicConfig,
+        }),
       });
 
       if (!res.ok) {
@@ -47,7 +67,7 @@ export const HomePage: React.FC<HomePageProps> = ({ onNavigateRoom }) => {
   };
 
   return (
-    <div className="min-h-[100dvh] bg-slate-950 text-slate-100 flex flex-col items-center justify-between p-4 sm:p-8 relative overflow-x-hidden overflow-y-auto">
+    <div className="min-h-[100dvh] bg-slate-950 text-slate-100 flex flex-col items-center justify-between p-3 sm:p-8 relative overflow-x-hidden overflow-y-auto">
       {/* Background ambient lighting */}
       <div className="absolute top-1/4 left-1/2 -translate-x-1/2 w-96 h-96 bg-indigo-600/15 rounded-full blur-3xl pointer-events-none" />
       <div className="absolute bottom-10 left-10 w-72 h-72 bg-pink-600/10 rounded-full blur-3xl pointer-events-none" />
@@ -60,140 +80,185 @@ export const HomePage: React.FC<HomePageProps> = ({ onNavigateRoom }) => {
             <Paintbrush className="w-5 h-5 text-white" />
           </div>
           <div>
-            <span className="font-extrabold tracking-wider text-lg bg-clip-text text-transparent bg-gradient-to-r from-indigo-400 via-purple-300 to-pink-400">
+            <span className="font-extrabold tracking-wider text-lg bg-clip-text text-transparent bg-gradient-to-r from-indigo-400 to-pink-400">
               PIXEL PARTY
             </span>
-            <span className="block text-[10px] text-slate-400 font-mono tracking-widest uppercase">
-              Realtime Canvas
+            <span className="text-[10px] uppercase font-bold text-slate-400 block tracking-widest">
+              Multiplayer Canvas
             </span>
           </div>
         </div>
 
-        <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-slate-900/80 border border-slate-800 text-xs font-semibold text-indigo-400">
-          <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-          <span>Realtime Canvas 64×64</span>
+        <div className="flex items-center gap-2">
+          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs font-semibold">
+            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+            Live Realtime
+          </span>
         </div>
       </header>
 
       {/* Hero Content */}
-      <main className="w-full max-w-2xl my-auto text-center z-10 py-6">
-        <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-indigo-500/10 border border-indigo-500/30 text-indigo-300 text-xs font-bold uppercase tracking-wider mb-6">
-          <Sparkles className="w-3.5 h-3.5" />
+      <main className="w-full max-w-2xl my-auto text-center z-10 py-4 sm:py-6">
+        <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-indigo-500/10 border border-indigo-500/30 text-indigo-300 text-xs font-bold uppercase tracking-wider mb-4">
+          <Sparkles className="w-3.5 h-3.5 text-amber-400" />
           <span>Multiplayer Pixel-Art Party Game</span>
         </div>
 
-        <h1 className="text-4xl sm:text-6xl font-extrabold tracking-tight mb-4 text-white leading-tight">
-          Draw Together in{' '}
+        <h1 className="text-3xl sm:text-5xl font-extrabold tracking-tight mb-3 text-white leading-tight">
+          Рисуйте вместе в{' '}
           <span className="bg-clip-text text-transparent bg-gradient-to-r from-indigo-400 via-purple-400 to-pink-400">
             Realtime
           </span>
         </h1>
 
-        <p className="text-base sm:text-lg text-slate-300 max-w-lg mx-auto mb-6 leading-relaxed font-medium">
-          Create a room, share the QR code with your friends on phone or desktop, and draw on a shared canvas with full pixel ownership and player filtering!
+        <p className="text-sm sm:text-base text-slate-300 max-w-lg mx-auto mb-5 leading-relaxed font-medium">
+          Создайте комнату, отсканируйте QR-код с телефона и устройте взрывной творческий вечер с друзьями!
         </p>
 
-        {/* Canvas Size Selector */}
-        <div className="max-w-lg mx-auto mb-6 p-3 bg-slate-900/80 border border-slate-800 rounded-2xl flex items-center justify-between gap-2">
-          <span className="text-xs font-bold uppercase tracking-wider text-slate-400 pl-2">
-            Grid Size:
-          </span>
-          <div className="flex gap-1.5">
-            {[32, 64, 128].map((size) => (
+        {/* Game Mode Selector Card */}
+        <div className="max-w-lg mx-auto mb-4 p-3 bg-slate-900/90 border-2 border-indigo-500/30 rounded-2xl text-left space-y-3">
+          <div>
+            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 block mb-2 px-1">
+              Выберите режим игры:
+            </span>
+            <div className="grid grid-cols-2 gap-2">
               <button
-                key={size}
                 type="button"
-                onClick={() => setSelectedSize(size)}
-                className={`px-3.5 py-1.5 rounded-xl text-xs font-mono font-bold transition-all active:scale-95 ${
-                  selectedSize === size
-                    ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/30'
-                    : 'bg-slate-800 text-slate-400 hover:text-slate-200'
+                onClick={() => setGameMode('blind_mosaic')}
+                className={`p-3 rounded-xl border text-left transition-all ${
+                  gameMode === 'blind_mosaic'
+                    ? 'bg-indigo-600/30 border-indigo-500 text-white shadow-md'
+                    : 'bg-slate-800/60 border-slate-700/60 text-slate-300 hover:bg-slate-800'
                 }`}
               >
-                {size}×{size}
+                <div className="flex items-center gap-2 font-bold text-xs mb-1 text-indigo-300">
+                  <Scissors className="w-4 h-4 text-pink-400" />
+                  <span>Слепая мозаика 🎭</span>
+                </div>
+                <span className="text-[11px] text-slate-300 block leading-snug">
+                  Холст делится на тайные части (Голова/Тело/Ноги) с фееричным вскрытием!
+                </span>
               </button>
-            ))}
+
+              <button
+                type="button"
+                onClick={() => setGameMode('classic')}
+                className={`p-3 rounded-xl border text-left transition-all ${
+                  gameMode === 'classic'
+                    ? 'bg-indigo-600/30 border-indigo-500 text-white shadow-md'
+                    : 'bg-slate-800/60 border-slate-700/60 text-slate-300 hover:bg-slate-800'
+                }`}
+              >
+                <div className="flex items-center gap-2 font-bold text-xs mb-1 text-indigo-300">
+                  <Palette className="w-4 h-4 text-emerald-400" />
+                  <span>Классика 🎨</span>
+                </div>
+                <span className="text-[11px] text-slate-300 block leading-snug">
+                  Все рисуют на одном общем открытом холсте в реальном времени.
+                </span>
+              </button>
+            </div>
+          </div>
+
+          {/* Sector Count Selector (if Blind Mosaic) */}
+          {gameMode === 'blind_mosaic' && (
+            <div className="pt-2 border-t border-slate-800/80 flex items-center justify-between gap-2">
+              <span className="text-[11px] font-bold text-slate-400">Части мозаики:</span>
+              <div className="flex gap-1.5">
+                {[
+                  { count: 3, label: '3 (Голова/Тело/Ноги)' },
+                  { count: 2, label: '2 (Верх/Низ)' },
+                  { count: 4, label: '4 (Квадранты)' },
+                ].map((item) => (
+                  <button
+                    key={item.count}
+                    type="button"
+                    onClick={() => setSectorsCount(item.count)}
+                    className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all ${
+                      sectorsCount === item.count
+                        ? 'bg-indigo-600 text-white shadow-sm'
+                        : 'bg-slate-800 text-slate-400 hover:text-slate-200'
+                    }`}
+                  >
+                    {item.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Grid Size Row */}
+          <div className="pt-2 border-t border-slate-800/80 flex items-center justify-between gap-2">
+            <span className="text-[11px] font-bold text-slate-400">Размер холста:</span>
+            <div className="flex gap-1.5">
+              {[32, 64, 128].map((size) => (
+                <button
+                  key={size}
+                  type="button"
+                  onClick={() => setSelectedSize(size)}
+                  className={`px-3 py-1 rounded-lg text-xs font-mono font-bold transition-all ${
+                    selectedSize === size
+                      ? 'bg-indigo-600 text-white shadow-sm'
+                      : 'bg-slate-800 text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  {size}×{size}
+                </button>
+              ))}
+            </div>
           </div>
         </div>
 
         {/* Action Cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-lg mx-auto mb-12">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-w-lg mx-auto mb-8">
           {/* Create Room Button */}
           <button
             onClick={handleCreateRoom}
             disabled={isCreating}
-            className="flex flex-col items-center justify-center p-6 bg-gradient-to-b from-indigo-600 to-indigo-700 hover:from-indigo-500 hover:to-indigo-600 active:scale-98 rounded-3xl shadow-xl shadow-indigo-600/30 border border-indigo-400/30 transition-all group text-left"
+            className="flex flex-col items-center justify-center p-5 bg-gradient-to-b from-indigo-600 to-indigo-700 hover:from-indigo-500 hover:to-indigo-600 active:scale-98 rounded-3xl shadow-xl shadow-indigo-600/30 border border-indigo-400/30 transition-all group text-left"
           >
-            <div className="w-12 h-12 rounded-2xl bg-white/10 flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
-              <Plus className="w-6 h-6 text-white" />
+            <div className="w-11 h-11 rounded-2xl bg-white/10 flex items-center justify-center mb-2.5 group-hover:scale-110 transition-transform">
+              <Plus className="w-5 h-5 text-white" />
             </div>
-            <span className="text-lg font-bold text-white mb-1">
-              {isCreating ? 'Creating...' : 'Create Room'}
+            <span className="text-base font-bold text-white mb-0.5">
+              {isCreating ? 'Создание...' : 'Создать комнату'}
             </span>
-            <span className="text-xs text-indigo-200">Get QR code & invite friends</span>
+            <span className="text-[11px] text-indigo-200">Получить QR-код для друзей</span>
           </button>
 
           {/* Join Room Form */}
-          <div className="p-6 bg-slate-900/90 rounded-3xl border border-slate-800 shadow-xl flex flex-col justify-between">
-            <div className="text-left mb-3">
-              <span className="text-xs uppercase tracking-wider text-slate-400 font-bold block mb-1">
-                Have a code?
+          <div className="p-5 bg-slate-900/90 rounded-3xl border border-slate-800 shadow-xl flex flex-col justify-between">
+            <div className="text-left mb-2">
+              <span className="text-[10px] uppercase tracking-wider text-slate-400 font-bold block mb-0.5">
+                Есть код комнаты?
               </span>
-              <span className="text-sm font-semibold text-slate-200">Join Existing Room</span>
+              <span className="text-xs font-semibold text-slate-200">Войти в игру</span>
             </div>
 
-            <form onSubmit={handleJoinByCode} className="space-y-3">
+            <form onSubmit={handleJoinByCode} className="space-y-2.5">
               <input
                 type="text"
                 maxLength={6}
                 value={joinCode}
                 onChange={(e) => setJoinCode(e.target.value.toUpperCase())}
                 placeholder="ABC123"
-                className="w-full text-center tracking-widest uppercase font-mono font-bold text-base px-3 py-2.5 bg-slate-950 border border-slate-700 focus:border-indigo-500 rounded-xl text-amber-400 placeholder-slate-600 outline-none transition-all"
+                className="w-full text-center tracking-widest uppercase font-mono font-bold text-base px-3 py-2 bg-slate-950 border border-slate-700 focus:border-indigo-500 rounded-xl text-amber-400 placeholder-slate-600 outline-none transition-all"
               />
               <button
                 type="submit"
-                disabled={joinCode.trim().length < 3}
-                className="w-full py-2.5 bg-slate-800 hover:bg-slate-700 disabled:opacity-50 text-white font-bold rounded-xl text-xs uppercase tracking-wider transition-all flex items-center justify-center gap-1.5"
+                className="w-full py-2 px-3 bg-slate-800 hover:bg-slate-700 active:scale-98 text-slate-200 font-bold rounded-xl text-xs flex items-center justify-center gap-1.5 transition-all border border-slate-700"
               >
-                <span>Join Game</span>
+                <span>Войти</span>
                 <ArrowRight className="w-3.5 h-3.5" />
               </button>
             </form>
           </div>
         </div>
-
-        {/* 3 Step Instruction */}
-        <div className="grid grid-cols-3 gap-3 max-w-lg mx-auto pt-6 border-t border-slate-800/80">
-          <div className="flex flex-col items-center">
-            <div className="w-8 h-8 rounded-xl bg-indigo-950/80 border border-indigo-500/30 text-indigo-400 flex items-center justify-center mb-1 text-xs font-bold font-mono">
-              1
-            </div>
-            <span className="text-xs font-bold uppercase tracking-wider text-slate-200">SCAN</span>
-            <span className="text-[11px] text-slate-400">QR Code</span>
-          </div>
-
-          <div className="flex flex-col items-center">
-            <div className="w-8 h-8 rounded-xl bg-purple-950/80 border border-purple-500/30 text-purple-400 flex items-center justify-center mb-1 text-xs font-bold font-mono">
-              2
-            </div>
-            <span className="text-xs font-bold uppercase tracking-wider text-slate-200">JOIN</span>
-            <span className="text-[11px] text-slate-400">Enter Nickname</span>
-          </div>
-
-          <div className="flex flex-col items-center">
-            <div className="w-8 h-8 rounded-xl bg-pink-950/80 border border-pink-500/30 text-pink-400 flex items-center justify-center mb-1 text-xs font-bold font-mono">
-              3
-            </div>
-            <span className="text-xs font-bold uppercase tracking-wider text-slate-200">DRAW</span>
-            <span className="text-[11px] text-slate-400">Realtime Fun</span>
-          </div>
-        </div>
       </main>
 
       {/* Footer */}
-      <footer className="w-full max-w-4xl text-center py-4 text-xs text-slate-500 z-10">
-        Pixel Party MVP &bull; Server-Authoritative LWW Realtime Sync
+      <footer className="w-full max-w-4xl text-center z-10 py-2 border-t border-slate-900 text-xs text-slate-400">
+        Pixel Party &bull; Realtime Collaborative Canvas &bull; Blind Mosaic Mode
       </footer>
     </div>
   );

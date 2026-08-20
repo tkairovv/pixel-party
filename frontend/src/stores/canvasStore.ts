@@ -24,7 +24,12 @@ interface CanvasStoreState {
   showGrid: boolean;
   lastAppliedSeq: number;
 
-  // The in-memory map of pixels
+  canUndo: boolean;
+  canRedo: boolean;
+
+  timelapseHistory: PixelUpdate[];
+
+  // In-memory map of pixels
   pixels: Map<string, PixelState>;
 
   // Direct canvas render listeners
@@ -37,6 +42,8 @@ interface CanvasStoreState {
   setSelectedColor: (color: string) => void;
   setZoom: (zoom: number | ((prev: number) => number)) => void;
   setShowGrid: (show: boolean | ((prev: boolean) => boolean)) => void;
+  setUndoRedoStatus: (canUndo: boolean, canRedo: boolean) => void;
+  setTimelapseHistory: (history: PixelUpdate[]) => void;
 
   applySnapshot: (snapshot: CanvasSnapshot) => void;
   applyUpdate: (update: PixelUpdate) => boolean;
@@ -56,10 +63,13 @@ export const useCanvasStore = create<CanvasStoreState>((set, get) => ({
   height: DEFAULT_CANVAS_HEIGHT,
   tool: 'pencil',
   brushSize: 1,
-  selectedColor: PALETTE_COLORS[6], // Bright Red (#DC2626)
-  zoom: 12,
+  selectedColor: PALETTE_COLORS[6],
+  zoom: 10,
   showGrid: true,
   lastAppliedSeq: 0,
+  canUndo: false,
+  canRedo: false,
+  timelapseHistory: [],
   pixels: new Map<string, PixelState>(),
   listeners: new Set<PixelChangeListener>(),
 
@@ -80,6 +90,10 @@ export const useCanvasStore = create<CanvasStoreState>((set, get) => ({
     set((state) => ({
       showGrid: typeof showGrid === 'function' ? showGrid(state.showGrid) : showGrid,
     })),
+
+  setUndoRedoStatus: (canUndo, canRedo) => set({ canUndo, canRedo }),
+
+  setTimelapseHistory: (timelapseHistory) => set({ timelapseHistory }),
 
   applySnapshot: (snapshot) => {
     const newPixels = new Map<string, PixelState>();
@@ -102,7 +116,6 @@ export const useCanvasStore = create<CanvasStoreState>((set, get) => ({
     const key = pixelKey(update.x, update.y);
     const current = pixels.get(key);
 
-    // If incoming sequence is older than current pixel sequence, ignore (LWW protection)
     if (current && update.seq < current.seq) {
       return false;
     }
@@ -118,7 +131,7 @@ export const useCanvasStore = create<CanvasStoreState>((set, get) => ({
     }
 
     const nextSeq = Math.max(lastAppliedSeq, update.seq);
-    set({ lastAppliedSeq: nextSeq });
+    set({ lastAppliedSeq: nextSeq, canUndo: true });
 
     get().notifyChanges([key]);
     return true;
@@ -152,7 +165,7 @@ export const useCanvasStore = create<CanvasStoreState>((set, get) => ({
       }
     }
 
-    set({ lastAppliedSeq: maxSeq });
+    set({ lastAppliedSeq: maxSeq, canUndo: true });
     get().notifyChanges(changedKeys);
   },
 
@@ -177,13 +190,14 @@ export const useCanvasStore = create<CanvasStoreState>((set, get) => ({
       changedKeys.push(key);
     }
 
+    set({ canUndo: true });
     get().notifyChanges(changedKeys);
   },
 
   clearCanvasState: (newSeq) => {
     const { pixels } = get();
     pixels.clear();
-    set({ lastAppliedSeq: newSeq });
+    set({ lastAppliedSeq: newSeq, canUndo: false, canRedo: false });
     get().notifyChanges(['*']);
   },
 

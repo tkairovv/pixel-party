@@ -1,12 +1,10 @@
 import { Server, Socket } from 'socket.io';
 import { RoomStore } from '../store/roomStore.js';
 import { rateLimiter } from './rateLimiter.js';
-import { PixelBatchItem } from '@pixel-party/shared';
+import { PixelBatchItem, GameMode, MosaicConfig } from '@pixel-party/shared';
 
 export function setupSocketHandlers(io: Server, roomStore: RoomStore): void {
   io.on('connection', (socket: Socket) => {
-    // console.log(`[Socket] Connected: ${socket.id}`);
-
     // 1. Join Room
     socket.on('room:join', (data: { roomId: string; nickname: string; playerId?: string }) => {
       const { roomId, nickname, playerId } = data;
@@ -31,10 +29,8 @@ export function setupSocketHandlers(io: Server, roomStore: RoomStore): void {
         return;
       }
 
-      // Join socket.io room channel
       socket.join(roomId);
 
-      // Send initial authoritative state to the newly connected player
       socket.emit('room:state', {
         room,
         players,
@@ -43,7 +39,6 @@ export function setupSocketHandlers(io: Server, roomStore: RoomStore): void {
         snapshot,
       });
 
-      // Broadcast to other players that someone joined/updated
       socket.to(roomId).emit('player:joined', player);
       io.to(roomId).emit('players:updated', players);
     });
@@ -60,9 +55,7 @@ export function setupSocketHandlers(io: Server, roomStore: RoomStore): void {
           return;
         }
 
-        if (!rateLimiter.allow(socket.id, 1)) {
-          return; // Dropping throttled requests to protect server
-        }
+        if (!rateLimiter.allow(socket.id, 1)) return;
 
         const res = roomStore.applyPixelBatch(roomId, playerInfo.player.id, operationId, [{ x, y, color }]);
         if (res.error) {
@@ -70,12 +63,10 @@ export function setupSocketHandlers(io: Server, roomStore: RoomStore): void {
           return;
         }
 
-        // Broadcast authoritative update to ALL players in the room (including sender)
         for (const update of res.updates) {
           io.to(roomId).emit('pixel:updated', update);
         }
 
-        // Update player stats
         io.to(roomId).emit('players:updated', roomStore.getPlayers(roomId));
       }
     );
@@ -90,9 +81,7 @@ export function setupSocketHandlers(io: Server, roomStore: RoomStore): void {
         return;
       }
 
-      if (!rateLimiter.allow(socket.id, 1)) {
-        return;
-      }
+      if (!rateLimiter.allow(socket.id, 1)) return;
 
       const res = roomStore.applyPixelBatch(roomId, playerInfo.player.id, operationId, [{ x, y, color: null }]);
       if (res.error) {
@@ -107,7 +96,7 @@ export function setupSocketHandlers(io: Server, roomStore: RoomStore): void {
       io.to(roomId).emit('players:updated', roomStore.getPlayers(roomId));
     });
 
-    // 4. Batch Drawing (e.g. continuous mouse strokes with Bresenham)
+    // 4. Batch Drawing
     socket.on(
       'pixel:batch',
       (data: { roomId: string; operationId: string; pixels: PixelBatchItem[] }) => {
@@ -121,10 +110,7 @@ export function setupSocketHandlers(io: Server, roomStore: RoomStore): void {
 
         if (!pixels || pixels.length === 0) return;
 
-        // Rate limit according to number of pixels
-        if (!rateLimiter.allow(socket.id, Math.min(pixels.length, 10))) {
-          return;
-        }
+        if (!rateLimiter.allow(socket.id, Math.min(pixels.length, 10))) return;
 
         const res = roomStore.applyPixelBatch(roomId, playerInfo.player.id, operationId, pixels);
         if (res.error) {
@@ -132,7 +118,6 @@ export function setupSocketHandlers(io: Server, roomStore: RoomStore): void {
           return;
         }
 
-        // Broadcast batch updates
         if (res.updates.length > 0) {
           io.to(roomId).emit('pixel:batch_updated', res.updates);
           io.to(roomId).emit('players:updated', roomStore.getPlayers(roomId));
@@ -140,7 +125,90 @@ export function setupSocketHandlers(io: Server, roomStore: RoomStore): void {
       }
     );
 
-    // 5. Canvas Resync / Delta Sync
+    // 5. Personal Undo
+    socket.on('pixel:undo', (data: { roomId: string }) => {
+      const { roomId } = data;
+      const playerInfo = roomStore.getPlayerBySocket(socket.id);
+      if (!playerInfo || playerInfo.roomId !== roomId) return;
+
+      const undoRes = roomStore.undoPersonalStroke(roomId, playerInfo.player.id);
+      if (undoRes.updates.length > 0) {
+        io.to(roomId).emit('pixel:batch_updated', undoRes.updates);
+        io.to(roomId).emit('players:updated', roomStore.getPlayers(roomId));
+      }
+      socket.emit('undo:status', { canUndo: undoRes.canUndo, canRedo: undoRes.canRedo });
+    });
+
+    // 6. Personal Redo
+    socket.on('pixel:redo', (data: { roomId: string }) => {
+      const { roomId } = data;
+      const playerInfo = roomStore.getPlayerBySocket(socket.id);
+      if (!playerInfo || playerInfo.roomId !== roomId) return;
+
+      const redoRes = roomStore.redoPersonalStroke(roomId, playerInfo.player.id);
+      if (redoRes.updates.length > 0) {
+        io.to(roomId).emit('pixel:batch_updated', redoRes.updates);
+        io.to(roomId).emit('players:updated', roomStore.getPlayers(roomId));
+      }
+      socket.emit('undo:status', { canUndo: redoRes.canUndo, canRedo: redoRes.canRedo });
+    });
+
+    // 7. Request Full Operation History (For Timelapse Playback)
+    socket.on('timelapse:request', (data: { roomId: string }) => {
+      const { roomId } = data;
+      const roomData = roomStore.getRoomData(roomId);
+      if (roomData) {
+        socket.emit('timelapse:history', {
+          roomId,
+          width: roomData.room.width,
+          height: roomData.room.height,
+          operations: roomData.operationLog,
+        });
+      }
+    });
+
+    // 8. Set Game Mode & Config (Host only)
+    socket.on('game:set_mode', (data: { roomId: string; gameMode: GameMode; mosaicConfig?: MosaicConfig }) => {
+      const { roomId, gameMode, mosaicConfig } = data;
+      const playerInfo = roomStore.getPlayerBySocket(socket.id);
+      if (!playerInfo || playerInfo.roomId !== roomId) return;
+
+      const res = roomStore.setGameMode(roomId, playerInfo.player.id, gameMode, mosaicConfig);
+      if (res.success) {
+        const room = roomStore.getRoom(roomId);
+        const players = roomStore.getPlayers(roomId);
+        io.to(roomId).emit('room:config_updated', { room, players });
+      }
+    });
+
+    // 9. Change Team Sector
+    socket.on('game:set_team', (data: { roomId: string; playerId: string; sectorIndex: number }) => {
+      const { roomId, playerId, sectorIndex } = data;
+      const playerInfo = roomStore.getPlayerBySocket(socket.id);
+      if (!playerInfo || playerInfo.roomId !== roomId) return;
+
+      if (roomStore.setPlayerTeamSector(roomId, playerId, sectorIndex)) {
+        io.to(roomId).emit('players:updated', roomStore.getPlayers(roomId));
+      }
+    });
+
+    // 10. Reveal Step Update (Blind Mosaic Stage)
+    socket.on('game:reveal_step', (data: { roomId: string; step: number }) => {
+      const { roomId, step } = data;
+      const playerInfo = roomStore.getPlayerBySocket(socket.id);
+      if (!playerInfo || playerInfo.roomId !== roomId) return;
+
+      const res = roomStore.setRevealStep(roomId, playerInfo.player.id, step);
+      if (res.success) {
+        io.to(roomId).emit('game:status_changed', {
+          roomId,
+          status: res.status,
+          revealStep: res.revealStep,
+        });
+      }
+    });
+
+    // 11. Canvas Resync / Delta Sync
     socket.on('canvas:sync', (data: { roomId: string; lastAppliedSeq: number }) => {
       const { roomId, lastAppliedSeq } = data;
       const syncResult = roomStore.getDeltaOrSnapshot(roomId, lastAppliedSeq);
@@ -159,7 +227,7 @@ export function setupSocketHandlers(io: Server, roomStore: RoomStore): void {
       }
     });
 
-    // 6. Game Start (Host only)
+    // 12. Game Start (Host only)
     socket.on('game:start', (data: { roomId: string }) => {
       const { roomId } = data;
       const playerInfo = roomStore.getPlayerBySocket(socket.id);
@@ -167,13 +235,13 @@ export function setupSocketHandlers(io: Server, roomStore: RoomStore): void {
 
       const result = roomStore.startGame(roomId, playerInfo.player.id);
       if (result.success) {
-        io.to(roomId).emit('game:started', { roomId, status: 'playing' });
+        io.to(roomId).emit('game:started', { roomId, status: 'playing', revealStep: 0 });
       } else {
         socket.emit('error', { code: 'START_GAME_FAILED', message: result.error || 'Failed to start game' });
       }
     });
 
-    // 7. Game Finish (Host only)
+    // 13. Game Finish (Host only)
     socket.on('game:finish', (data: { roomId: string }) => {
       const { roomId } = data;
       const playerInfo = roomStore.getPlayerBySocket(socket.id);
@@ -181,13 +249,18 @@ export function setupSocketHandlers(io: Server, roomStore: RoomStore): void {
 
       const result = roomStore.finishGame(roomId, playerInfo.player.id);
       if (result.success) {
-        io.to(roomId).emit('game:finished', { roomId, status: 'finished' });
+        const room = roomStore.getRoom(roomId);
+        io.to(roomId).emit('game:finished', {
+          roomId,
+          status: room?.status || 'finished',
+          revealStep: room?.revealStep || 0,
+        });
       } else {
         socket.emit('error', { code: 'FINISH_GAME_FAILED', message: result.error || 'Failed to finish game' });
       }
     });
 
-    // 8. Clear Canvas (Host only)
+    // 14. Clear Canvas (Host only)
     socket.on('canvas:clear', (data: { roomId: string }) => {
       const { roomId } = data;
       const playerInfo = roomStore.getPlayerBySocket(socket.id);
@@ -206,13 +279,12 @@ export function setupSocketHandlers(io: Server, roomStore: RoomStore): void {
       }
     });
 
-    // 9. Disconnect
+    // 15. Disconnect
     socket.on('disconnect', () => {
       rateLimiter.remove(socket.id);
       const disconnected = roomStore.disconnectSocket(socket.id);
       if (disconnected) {
         const { roomId } = disconnected;
-        // Notify room that player disconnected, but retain their pixels and player listing
         io.to(roomId).emit('players:updated', roomStore.getPlayers(roomId));
       }
     });

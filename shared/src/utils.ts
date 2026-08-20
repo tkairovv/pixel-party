@@ -1,4 +1,4 @@
-import { DEFAULT_CANVAS_WIDTH, DEFAULT_CANVAS_HEIGHT, PALETTE_COLORS } from './constants.js';
+import { DEFAULT_CANVAS_WIDTH, DEFAULT_CANVAS_HEIGHT } from './constants.js';
 
 export function pixelKey(x: number, y: number): string {
   return `${x}:${y}`;
@@ -50,6 +50,52 @@ export function generatePlayerId(): string {
   return `p_${Date.now().toString(36)}_${Math.random().toString(36).substring(2, 8)}`;
 }
 
+export interface SectorBounds {
+  minX: number;
+  maxX: number;
+  minY: number;
+  maxY: number;
+}
+
+export function getSectorBounds(
+  sectorIndex: number,
+  sectorsCount: number,
+  width: number = DEFAULT_CANVAS_WIDTH,
+  height: number = DEFAULT_CANVAS_HEIGHT,
+  direction: 'horizontal' | 'vertical' | 'grid' = 'horizontal'
+): SectorBounds {
+  if (direction === 'grid' && sectorsCount === 4) {
+    const halfW = Math.floor(width / 2);
+    const halfH = Math.floor(height / 2);
+    switch (sectorIndex) {
+      case 0: return { minX: 0, maxX: halfW, minY: 0, maxY: halfH };
+      case 1: return { minX: halfW, maxX: width, minY: 0, maxY: halfH };
+      case 2: return { minX: 0, maxX: halfW, minY: halfH, maxY: height };
+      case 3:
+      default: return { minX: halfW, maxX: width, minY: halfH, maxY: height };
+    }
+  }
+
+  // Horizontal strips (Head, Body, Legs)
+  const sectorH = Math.floor(height / sectorsCount);
+  const minY = sectorIndex * sectorH;
+  const maxY = sectorIndex === sectorsCount - 1 ? height : (sectorIndex + 1) * sectorH;
+  return { minX: 0, maxX: width, minY, maxY };
+}
+
+export function isCoordInSector(
+  x: number,
+  y: number,
+  sectorIndex: number,
+  sectorsCount: number,
+  width: number = DEFAULT_CANVAS_WIDTH,
+  height: number = DEFAULT_CANVAS_HEIGHT,
+  direction: 'horizontal' | 'vertical' | 'grid' = 'horizontal'
+): boolean {
+  const bounds = getSectorBounds(sectorIndex, sectorsCount, width, height, direction);
+  return x >= bounds.minX && x < bounds.maxX && y >= bounds.minY && y < bounds.maxY;
+}
+
 /**
  * Bresenham's line algorithm with brush size support.
  * Returns unique in-bounds coordinates covering the continuous stroke.
@@ -61,10 +107,16 @@ export function getLinePixels(
   y1: number,
   brushSize: number = 1,
   width: number = DEFAULT_CANVAS_WIDTH,
-  height: number = DEFAULT_CANVAS_HEIGHT
+  height: number = DEFAULT_CANVAS_HEIGHT,
+  sectorBounds?: SectorBounds
 ): { x: number; y: number }[] {
   const visited = new Set<string>();
   const result: { x: number; y: number }[] = [];
+
+  const minX = sectorBounds ? sectorBounds.minX : 0;
+  const maxX = sectorBounds ? sectorBounds.maxX : width;
+  const minY = sectorBounds ? sectorBounds.minY : 0;
+  const maxY = sectorBounds ? sectorBounds.maxY : height;
 
   const addPointWithBrush = (cx: number, cy: number) => {
     const half = Math.floor(brushSize / 2);
@@ -72,7 +124,7 @@ export function getLinePixels(
       for (let dy = -half; dy < brushSize - half; dy++) {
         const px = cx + dx;
         const py = cy + dy;
-        if (isValidCoordinate(px, py, width, height)) {
+        if (isValidCoordinate(px, py, width, height) && px >= minX && px < maxX && py >= minY && py < maxY) {
           const key = pixelKey(px, py);
           if (!visited.has(key)) {
             visited.add(key);

@@ -30,16 +30,23 @@ app.get('/api/health', (_req, res) => {
 // Create Room
 app.post('/api/rooms', (req, res) => {
   try {
-    const { width, height } = req.body || {};
+    const { width, height, gameMode, mosaicConfig } = req.body || {};
     const allowedSizes = [16, 32, 48, 64, 96, 128];
     const w = allowedSizes.includes(Number(width)) ? Number(width) : config.canvasWidth;
     const h = allowedSizes.includes(Number(height)) ? Number(height) : config.canvasHeight;
 
-    const { room, hostId } = globalRoomStore.createRoom({ width: w, height: h });
+    const { room, hostId } = globalRoomStore.createRoom({
+      width: w,
+      height: h,
+      gameMode,
+      mosaicConfig,
+    });
     res.status(201).json({
       roomId: room.id,
       hostId,
       status: room.status,
+      gameMode: room.gameMode,
+      mosaicConfig: room.mosaicConfig,
       width: room.width,
       height: room.height,
       createdAt: room.createdAt,
