@@ -11,7 +11,7 @@ import {
   getSectorBounds,
   isCoordInSector,
 } from '@pixel-party/shared';
-import { ZoomIn, ZoomOut, Maximize2, Eye, EyeOff, Scissors } from 'lucide-react';
+import { ZoomIn, ZoomOut, Maximize2, Eye, EyeOff, Scissors, Hand, Pencil } from 'lucide-react';
 
 interface PixelCanvasProps {
   roomId: string;
@@ -36,12 +36,17 @@ export const PixelCanvas: React.FC<PixelCanvasProps> = ({ roomId }) => {
   } = useCanvasStore();
 
   const { myPlayerId, selectedFilterPlayerId, hoveredPlayerId } = usePlayerStore();
-  const { room, players, isHost, isHostPeekActive, toggleHostPeek } = useRoomStore();
+  const { room, players, isHost, isHostSpectator, isHostPeekActive, toggleHostPeek } = useRoomStore();
 
   // Navigation & Drawing State
   const [isDrawing, setIsDrawing] = useState(false);
+  const [isPanning, setIsPanning] = useState(false);
+  const [panMode, setPanMode] = useState(false);
+  const [panOffset, setPanOffset] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
   const [hoverCoord, setHoverCoord] = useState<{ x: number; y: number } | null>(null);
+
   const lastCoordRef = useRef<{ x: number; y: number } | null>(null);
+  const panStartRef = useRef<{ clientX: number; clientY: number; startPanX: number; startPanY: number } | null>(null);
 
   // Batch queue for high-speed network synchronization
   const currentBatchRef = useRef<PixelBatchItem[]>([]);
@@ -49,7 +54,9 @@ export const PixelCanvas: React.FC<PixelCanvasProps> = ({ roomId }) => {
 
   // Touch tracking for pinch-to-zoom & pan
   const touchStartDistRef = useRef<number | null>(null);
+  const touchStartMidRef = useRef<{ x: number; y: number } | null>(null);
   const initialZoomRef = useRef<number>(zoom);
+  const initialPanRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
 
   // Slicing intro animation state (for Blind Mosaic mode)
   const [showIntroAnimation, setShowIntroAnimation] = useState(false);
@@ -60,25 +67,26 @@ export const PixelCanvas: React.FC<PixelCanvasProps> = ({ roomId }) => {
 
   // Show 2.5s Slicing Intro on Game Start
   useEffect(() => {
-    if (isBlindMosaic && room?.status === 'playing') {
+    if (isBlindMosaic && room?.status === 'playing' && !isHostSpectator) {
       setShowIntroAnimation(true);
       const timer = setTimeout(() => setShowIntroAnimation(false), 2500);
       return () => clearTimeout(timer);
     }
-  }, [isBlindMosaic, room?.status]);
+  }, [isBlindMosaic, room?.status, isHostSpectator]);
 
-  // Auto-fit initial zoom on mount or dimension change
+  // Auto-fit initial zoom and center pan
   const autoFitZoom = useCallback(() => {
     if (!viewportRef.current) return;
     const rect = viewportRef.current.getBoundingClientRect();
-    const availableWidth = Math.max(260, rect.width - 24);
-    const availableHeight = Math.max(260, rect.height - 40);
+    const availableWidth = Math.max(260, rect.width - 32);
+    const availableHeight = Math.max(260, rect.height - 48);
 
     const fitZoom = Math.max(
       2,
       Math.floor(Math.min(availableWidth / width, availableHeight / height))
     );
     setZoom(fitZoom);
+    setPanOffset({ x: 0, y: 0 });
   }, [width, height, setZoom]);
 
   useEffect(() => {
@@ -153,7 +161,7 @@ export const PixelCanvas: React.FC<PixelCanvasProps> = ({ roomId }) => {
     }
 
     // If Blind Mosaic is active and not host peeking, shroud other sectors!
-    if (isBlindMosaic && room?.status === 'playing' && !isHostPeekActive && mySector !== undefined) {
+    if (isBlindMosaic && room?.status === 'playing' && !isHostPeekActive && mySector !== undefined && !isHostSpectator) {
       const sectorsCount = room.mosaicConfig!.sectorsCount;
       const cellSize = zoom;
 
@@ -165,22 +173,18 @@ export const PixelCanvas: React.FC<PixelCanvasProps> = ({ roomId }) => {
           const rw = (bounds.maxX - bounds.minX) * cellSize;
           const rh = (bounds.maxY - bounds.minY) * cellSize;
 
-          // Velvet Curtain overlay
           ctx.fillStyle = '#0B0F19';
           ctx.fillRect(rx, ry, rw, rh);
 
-          // Subtle stripes pattern
           ctx.fillStyle = '#111827';
           for (let s = rx; s < rx + rw; s += 20) {
             ctx.fillRect(s, ry, 10, rh);
           }
 
-          // Shroud border
           ctx.strokeStyle = '#4F46E5';
           ctx.lineWidth = 2;
           ctx.strokeRect(rx, ry, rw, rh);
 
-          // Secret Zone Text
           ctx.fillStyle = '#818CF8';
           ctx.font = 'bold 13px monospace';
           ctx.textAlign = 'center';
@@ -189,7 +193,6 @@ export const PixelCanvas: React.FC<PixelCanvasProps> = ({ roomId }) => {
         }
       }
 
-      // Draw dividing line around player's active sector
       const myBounds = getSectorBounds(mySector, sectorsCount, width, height, room.mosaicConfig!.direction);
       ctx.strokeStyle = '#10B981';
       ctx.lineWidth = 2;
@@ -210,11 +213,12 @@ export const PixelCanvas: React.FC<PixelCanvasProps> = ({ roomId }) => {
     room?.status,
     room?.mosaicConfig,
     isHostPeekActive,
+    isHostSpectator,
     mySector,
     zoom,
   ]);
 
-  // Subscribe to store updates
+  // Granular store updates
   useEffect(() => {
     const unsubscribe = subscribeChanges((keys) => {
       const canvas = canvasRef.current;
@@ -277,8 +281,7 @@ export const PixelCanvas: React.FC<PixelCanvasProps> = ({ roomId }) => {
       return null;
     }
 
-    // In Blind Mosaic mode (unless host peeking), clamp strictly to player's sector!
-    if (isBlindMosaic && !isHostPeekActive && mySector !== undefined) {
+    if (isBlindMosaic && !isHostPeekActive && mySector !== undefined && !isHostSpectator) {
       const inSector = isCoordInSector(
         logicalX,
         logicalY,
@@ -297,9 +300,9 @@ export const PixelCanvas: React.FC<PixelCanvasProps> = ({ roomId }) => {
   // Draw continuous stroke using Bresenham line interpolation
   const drawStrokeTo = useCallback(
     (targetCoord: { x: number; y: number }) => {
-      if (!myPlayerId || room?.status !== 'playing') return;
+      if (!myPlayerId || room?.status !== 'playing' || isHostSpectator) return;
 
-      const sectorBounds = (isBlindMosaic && !isHostPeekActive && mySector !== undefined)
+      const sectorBounds = (isBlindMosaic && !isHostPeekActive && mySector !== undefined && !isHostSpectator)
         ? getSectorBounds(mySector, room!.mosaicConfig!.sectorsCount, width, height, room!.mosaicConfig!.direction)
         : undefined;
 
@@ -323,7 +326,6 @@ export const PixelCanvas: React.FC<PixelCanvasProps> = ({ roomId }) => {
         color: colorToApply,
       }));
 
-      // Optimistic local paint
       applyOptimisticBatch(batchItems, myPlayerId);
       currentBatchRef.current.push(...batchItems);
 
@@ -345,6 +347,7 @@ export const PixelCanvas: React.FC<PixelCanvasProps> = ({ roomId }) => {
       selectedColor,
       isBlindMosaic,
       isHostPeekActive,
+      isHostSpectator,
       mySector,
       room,
       applyOptimisticBatch,
@@ -352,8 +355,21 @@ export const PixelCanvas: React.FC<PixelCanvasProps> = ({ roomId }) => {
     ]
   );
 
-  // Pointer Handlers
+  // Mouse Handlers
   const handleMouseDown = (e: React.MouseEvent) => {
+    // Check if Middle Mouse Button or Pan Mode or Spacebar
+    if (e.button === 1 || e.button === 2 || panMode || isHostSpectator) {
+      e.preventDefault();
+      setIsPanning(true);
+      panStartRef.current = {
+        clientX: e.clientX,
+        clientY: e.clientY,
+        startPanX: panOffset.x,
+        startPanY: panOffset.y,
+      };
+      return;
+    }
+
     if (e.button !== 0) return;
     if (room?.status !== 'playing') return;
 
@@ -366,6 +382,16 @@ export const PixelCanvas: React.FC<PixelCanvasProps> = ({ roomId }) => {
   };
 
   const handleMouseMove = (e: React.MouseEvent) => {
+    if (isPanning && panStartRef.current) {
+      const dx = e.clientX - panStartRef.current.clientX;
+      const dy = e.clientY - panStartRef.current.clientY;
+      setPanOffset({
+        x: panStartRef.current.startPanX + dx,
+        y: panStartRef.current.startPanY + dy,
+      });
+      return;
+    }
+
     const coord = getCanvasCoords(e.clientX, e.clientY);
     setHoverCoord(coord);
 
@@ -374,6 +400,9 @@ export const PixelCanvas: React.FC<PixelCanvasProps> = ({ roomId }) => {
   };
 
   const handleMouseUp = () => {
+    setIsPanning(false);
+    panStartRef.current = null;
+
     if (isDrawing) {
       setIsDrawing(false);
       lastCoordRef.current = null;
@@ -381,53 +410,99 @@ export const PixelCanvas: React.FC<PixelCanvasProps> = ({ roomId }) => {
     }
   };
 
-  // Touch Handlers with 2-finger pinch-to-zoom
+  // Touch Handlers with 2-finger pinch-to-zoom and fluid pan
   const handleTouchStart = (e: React.TouchEvent) => {
     if (e.touches.length === 2) {
       setIsDrawing(false);
       lastCoordRef.current = null;
       flushBatch();
+
       const dx = e.touches[0].clientX - e.touches[1].clientX;
       const dy = e.touches[0].clientY - e.touches[1].clientY;
       touchStartDistRef.current = Math.hypot(dx, dy);
+      touchStartMidRef.current = {
+        x: (e.touches[0].clientX + e.touches[1].clientX) / 2,
+        y: (e.touches[0].clientY + e.touches[1].clientY) / 2,
+      };
       initialZoomRef.current = zoom;
+      initialPanRef.current = { ...panOffset };
       return;
     }
 
-    if (e.touches.length === 1 && room?.status === 'playing') {
+    if (e.touches.length === 1) {
       const touch = e.touches[0];
-      const coord = getCanvasCoords(touch.clientX, touch.clientY);
-      if (!coord) return;
+      if (panMode || isHostSpectator) {
+        setIsPanning(true);
+        panStartRef.current = {
+          clientX: touch.clientX,
+          clientY: touch.clientY,
+          startPanX: panOffset.x,
+          startPanY: panOffset.y,
+        };
+        return;
+      }
 
-      setIsDrawing(true);
-      lastCoordRef.current = coord;
-      drawStrokeTo(coord);
+      if (room?.status === 'playing') {
+        const coord = getCanvasCoords(touch.clientX, touch.clientY);
+        if (!coord) return;
+
+        setIsDrawing(true);
+        lastCoordRef.current = coord;
+        drawStrokeTo(coord);
+      }
     }
   };
 
   const handleTouchMove = (e: React.TouchEvent) => {
-    if (e.touches.length === 2 && touchStartDistRef.current !== null) {
+    if (e.touches.length === 2 && touchStartDistRef.current !== null && touchStartMidRef.current !== null) {
+      // 2-finger Pinch Zoom + Pan
       const dx = e.touches[0].clientX - e.touches[1].clientX;
       const dy = e.touches[0].clientY - e.touches[1].clientY;
       const currentDist = Math.hypot(dx, dy);
       const factor = currentDist / touchStartDistRef.current;
       const newZoom = Math.max(2, Math.min(32, Math.round(initialZoomRef.current * factor)));
       setZoom(newZoom);
+
+      const midX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
+      const midY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
+      const panDx = midX - touchStartMidRef.current.x;
+      const panDy = midY - touchStartMidRef.current.y;
+
+      setPanOffset({
+        x: initialPanRef.current.x + panDx,
+        y: initialPanRef.current.y + panDy,
+      });
       return;
     }
 
-    if (e.touches.length === 1 && isDrawing) {
+    if (e.touches.length === 1) {
       const touch = e.touches[0];
-      const coord = getCanvasCoords(touch.clientX, touch.clientY);
-      if (coord) {
-        setHoverCoord(coord);
-        drawStrokeTo(coord);
+      if (isPanning && panStartRef.current) {
+        const dx = touch.clientX - panStartRef.current.clientX;
+        const dy = touch.clientY - panStartRef.current.clientY;
+        setPanOffset({
+          x: panStartRef.current.startPanX + dx,
+          y: panStartRef.current.startPanY + dy,
+        });
+        return;
+      }
+
+      if (isDrawing) {
+        const coord = getCanvasCoords(touch.clientX, touch.clientY);
+        if (coord) {
+          setHoverCoord(coord);
+          drawStrokeTo(coord);
+        }
       }
     }
   };
 
   const handleTouchEnd = () => {
     touchStartDistRef.current = null;
+    touchStartMidRef.current = null;
+    setIsPanning(false);
+    panStartRef.current = null;
+
     if (isDrawing) {
       setIsDrawing(false);
       lastCoordRef.current = null;
@@ -435,18 +510,17 @@ export const PixelCanvas: React.FC<PixelCanvasProps> = ({ roomId }) => {
     }
   };
 
+  // Mouse wheel zoom centering
   const handleWheel = (e: React.WheelEvent) => {
-    if (e.ctrlKey || e.metaKey || e.altKey) {
-      e.preventDefault();
-      const delta = e.deltaY < 0 ? 1 : -1;
-      setZoom((z) => Math.max(2, Math.min(32, z + delta)));
-    }
+    e.preventDefault();
+    const delta = e.deltaY < 0 ? 1 : -1;
+    setZoom((z) => Math.max(2, Math.min(32, z + delta)));
   };
 
   const canvasPixelWidth = width * zoom;
   const canvasPixelHeight = height * zoom;
 
-  const currentSectorTitle = (isBlindMosaic && mySector !== undefined)
+  const currentSectorTitle = (isBlindMosaic && mySector !== undefined && !isHostSpectator)
     ? room!.mosaicConfig!.sectorTitles[mySector] || `Сектор ${mySector + 1}`
     : null;
 
@@ -454,7 +528,16 @@ export const PixelCanvas: React.FC<PixelCanvasProps> = ({ roomId }) => {
     <div
       ref={viewportRef}
       onWheel={handleWheel}
-      className="relative flex-1 w-full h-full overflow-auto touch-none select-none flex min-h-0 min-w-0"
+      onMouseDown={handleMouseDown}
+      onMouseMove={handleMouseMove}
+      onMouseUp={handleMouseUp}
+      onTouchStart={handleTouchStart}
+      onTouchMove={handleTouchMove}
+      onTouchEnd={handleTouchEnd}
+      onTouchCancel={handleTouchEnd}
+      className={`relative flex-1 w-full h-full overflow-hidden select-none flex items-center justify-center min-h-0 min-w-0 ${
+        panMode || isHostSpectator ? 'cursor-grab active:cursor-grabbing' : 'cursor-crosshair'
+      }`}
     >
       {/* Slicing Cinematic Intro Overlay */}
       {showIntroAnimation && (
@@ -473,7 +556,21 @@ export const PixelCanvas: React.FC<PixelCanvasProps> = ({ roomId }) => {
       )}
 
       {/* Floating Canvas Controls Overlay */}
-      <div className="absolute top-3 left-3 z-10 flex items-center gap-1.5 p-1 bg-slate-900/90 border border-slate-800 rounded-xl shadow-lg backdrop-blur-md">
+      <div className="absolute top-3 left-3 z-10 flex items-center gap-1 p-1 bg-slate-900/90 border border-slate-800 rounded-xl shadow-lg backdrop-blur-md">
+        {/* Draw vs Pan Mode Toggle */}
+        <button
+          type="button"
+          onClick={() => setPanMode(!panMode)}
+          title={panMode ? 'Режим рисования' : 'Режим перемещения (Рука)'}
+          className={`p-1.5 rounded-lg transition-all active:scale-95 flex items-center gap-1 text-[11px] font-bold ${
+            panMode
+              ? 'bg-indigo-600 text-white shadow-md'
+              : 'text-slate-300 hover:bg-slate-800'
+          }`}
+        >
+          {panMode ? <Hand className="w-4 h-4" /> : <Pencil className="w-4 h-4" />}
+        </button>
+
         <button
           type="button"
           onClick={() => setZoom((z) => Math.max(2, z - 2))}
@@ -499,7 +596,7 @@ export const PixelCanvas: React.FC<PixelCanvasProps> = ({ roomId }) => {
         <button
           type="button"
           onClick={autoFitZoom}
-          title="Fit Canvas to Screen"
+          title="Fit Canvas to Screen (Center & Reset View)"
           className="p-1.5 text-slate-300 hover:text-white rounded-lg hover:bg-slate-800 active:scale-95 border-l border-slate-800 ml-0.5"
         >
           <Maximize2 className="w-4 h-4 text-amber-400" />
@@ -531,38 +628,33 @@ export const PixelCanvas: React.FC<PixelCanvasProps> = ({ roomId }) => {
           </div>
         )}
 
-        {hoverCoord && (
+        {hoverCoord && !isHostSpectator && (
           <div className="px-2.5 py-1 bg-slate-900/90 border border-slate-800 rounded-xl text-[11px] font-mono font-bold text-amber-400 shadow-md backdrop-blur-md">
             {hoverCoord.x}, {hoverCoord.y}
           </div>
         )}
       </div>
 
-      {/* Centered Canvas Container with m-auto */}
-      <div className="m-auto p-4 sm:p-8 flex items-center justify-center shrink-0">
+      {/* Smooth Matrix Transform Centered Canvas */}
+      <div
+        style={{
+          transform: `translate3d(${panOffset.x}px, ${panOffset.y}px, 0)`,
+          willChange: 'transform',
+        }}
+        className="relative flex items-center justify-center shrink-0 transition-transform duration-75"
+      >
         <div className="relative rounded-2xl shadow-2xl p-1.5 sm:p-2 bg-slate-900 border-2 border-indigo-500/30 flex items-center justify-center">
           <div className="relative overflow-hidden rounded-lg shadow-inner bg-white border border-slate-700">
             <canvas
               ref={canvasRef}
               width={canvasPixelWidth}
               height={canvasPixelHeight}
-              onMouseDown={handleMouseDown}
-              onMouseMove={handleMouseMove}
-              onMouseUp={handleMouseUp}
-              onMouseLeave={() => {
-                handleMouseUp();
-                setHoverCoord(null);
-              }}
-              onTouchStart={handleTouchStart}
-              onTouchMove={handleTouchMove}
-              onTouchEnd={handleTouchEnd}
-              onTouchCancel={handleTouchEnd}
-              className="cursor-crosshair block touch-none"
               style={{
                 width: `${canvasPixelWidth}px`,
                 height: `${canvasPixelHeight}px`,
                 imageRendering: 'pixelated',
               }}
+              className="block"
             />
           </div>
         </div>
