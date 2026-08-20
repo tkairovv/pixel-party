@@ -5,7 +5,42 @@ import { PixelBatchItem, GameMode, MosaicConfig } from '@pixel-party/shared';
 
 export function setupSocketHandlers(io: Server, roomStore: RoomStore): void {
   io.on('connection', (socket: Socket) => {
-    // 1. Join Room
+    // 1. Join Room as Host (Organizer / Big Screen TV Spectator)
+    socket.on('room:join_host', (data: { roomId: string; hostId: string }) => {
+      const { roomId, hostId } = data;
+      if (!roomId || !hostId) {
+        socket.emit('error', { code: 'INVALID_ARGS', message: 'Room ID and Host ID are required' });
+        return;
+      }
+
+      const hostResult = roomStore.joinHost(roomId, socket.id, hostId);
+      if ('error' in hostResult) {
+        socket.emit('error', { code: 'HOST_AUTH_FAILED', message: hostResult.error });
+        return;
+      }
+
+      const room = roomStore.getRoom(roomId);
+      const snapshot = roomStore.getSnapshot(roomId);
+      const players = roomStore.getPlayers(roomId);
+
+      if (!room || !snapshot) {
+        socket.emit('error', { code: 'ROOM_NOT_FOUND', message: 'Room could not be loaded' });
+        return;
+      }
+
+      socket.join(roomId);
+
+      socket.emit('room:state', {
+        room,
+        players,
+        isHost: true,
+        isHostSpectator: true,
+        myPlayerId: hostId,
+        snapshot,
+      });
+    });
+
+    // 2. Join Room as Drawing Player
     socket.on('room:join', (data: { roomId: string; nickname: string; playerId?: string }) => {
       const { roomId, nickname, playerId } = data;
       if (!roomId || !nickname) {
@@ -35,6 +70,7 @@ export function setupSocketHandlers(io: Server, roomStore: RoomStore): void {
         room,
         players,
         isHost,
+        isHostSpectator: false,
         myPlayerId: player.id,
         snapshot,
       });

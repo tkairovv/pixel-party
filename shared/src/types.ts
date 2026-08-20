@@ -16,6 +16,7 @@ export interface Player {
   joinedAt: number;
   pixelCount?: number;
   teamSector?: number; // 0..N-1 sector index
+  isHostSpectator?: boolean; // true if this is the dedicated room creator/host screen
 }
 
 export interface Room {
@@ -89,6 +90,7 @@ export interface RoomStatePayload {
   room: Room;
   players: Player[];
   isHost: boolean;
+  isHostSpectator: boolean;
   myPlayerId: string;
   snapshot: CanvasSnapshot;
 }

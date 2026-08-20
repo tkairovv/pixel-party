@@ -63,15 +63,19 @@ class SocketClient {
 
     // Room State received upon join
     this.socket.on('room:state', (payload: RoomStatePayload) => {
-      const { room, players, isHost, myPlayerId, snapshot } = payload;
+      const { room, players, isHost, isHostSpectator, myPlayerId, snapshot } = payload;
       this.currentRoomId = room.id;
 
-      useRoomStore.getState().setRoom(room, isHost);
+      useRoomStore.getState().setRoom(room, isHost, isHostSpectator);
       useRoomStore.getState().setPlayers(players);
 
-      const myPlayer = players.find((p) => p.id === myPlayerId);
-      if (myPlayer) {
-        usePlayerStore.getState().setMyPlayer(myPlayer.id, myPlayer.nickname, myPlayer.color);
+      if (isHostSpectator) {
+        usePlayerStore.getState().setMyPlayer(myPlayerId, 'Хост (Экран)', '#6366F1');
+      } else {
+        const myPlayer = players.find((p) => p.id === myPlayerId);
+        if (myPlayer) {
+          usePlayerStore.getState().setMyPlayer(myPlayer.id, myPlayer.nickname, myPlayer.color);
+        }
       }
 
       useCanvasStore.getState().applySnapshot(snapshot);
@@ -167,6 +171,11 @@ class SocketClient {
     this.socket.on('error', (payload: AppErrorPayload) => {
       useUIStore.getState().showToast(payload.message || 'Something went wrong', 'error');
     });
+  }
+
+  public joinAsHost(roomId: string, hostId: string): void {
+    this.currentRoomId = roomId;
+    this.init().emit('room:join_host', { roomId, hostId });
   }
 
   public joinRoom(roomId: string, nickname: string, playerId?: string): void {

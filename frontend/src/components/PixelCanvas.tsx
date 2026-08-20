@@ -454,7 +454,7 @@ export const PixelCanvas: React.FC<PixelCanvasProps> = ({ roomId }) => {
     <div
       ref={viewportRef}
       onWheel={handleWheel}
-      className="relative flex-1 w-full h-full flex flex-col items-center justify-center p-1 sm:p-4 overflow-auto touch-none select-none"
+      className="relative flex-1 w-full h-full overflow-auto touch-none select-none flex min-h-0 min-w-0"
     >
       {/* Slicing Cinematic Intro Overlay */}
       {showIntroAnimation && (
@@ -538,31 +538,33 @@ export const PixelCanvas: React.FC<PixelCanvasProps> = ({ roomId }) => {
         )}
       </div>
 
-      {/* Canvas Container */}
-      <div className="relative rounded-2xl shadow-2xl p-1.5 sm:p-2 bg-slate-900 border-2 border-indigo-500/30 flex items-center justify-center max-w-full max-h-full">
-        <div className="relative overflow-hidden rounded-lg shadow-inner bg-white border border-slate-700">
-          <canvas
-            ref={canvasRef}
-            width={canvasPixelWidth}
-            height={canvasPixelHeight}
-            onMouseDown={handleMouseDown}
-            onMouseMove={handleMouseMove}
-            onMouseUp={handleMouseUp}
-            onMouseLeave={() => {
-              handleMouseUp();
-              setHoverCoord(null);
-            }}
-            onTouchStart={handleTouchStart}
-            onTouchMove={handleTouchMove}
-            onTouchEnd={handleTouchEnd}
-            onTouchCancel={handleTouchEnd}
-            className="cursor-crosshair block touch-none"
-            style={{
-              width: `${canvasPixelWidth}px`,
-              height: `${canvasPixelHeight}px`,
-              imageRendering: 'pixelated',
-            }}
-          />
+      {/* Centered Canvas Container with m-auto */}
+      <div className="m-auto p-4 sm:p-8 flex items-center justify-center shrink-0">
+        <div className="relative rounded-2xl shadow-2xl p-1.5 sm:p-2 bg-slate-900 border-2 border-indigo-500/30 flex items-center justify-center">
+          <div className="relative overflow-hidden rounded-lg shadow-inner bg-white border border-slate-700">
+            <canvas
+              ref={canvasRef}
+              width={canvasPixelWidth}
+              height={canvasPixelHeight}
+              onMouseDown={handleMouseDown}
+              onMouseMove={handleMouseMove}
+              onMouseUp={handleMouseUp}
+              onMouseLeave={() => {
+                handleMouseUp();
+                setHoverCoord(null);
+              }}
+              onTouchStart={handleTouchStart}
+              onTouchMove={handleTouchMove}
+              onTouchEnd={handleTouchEnd}
+              onTouchCancel={handleTouchEnd}
+              className="cursor-crosshair block touch-none"
+              style={{
+                width: `${canvasPixelWidth}px`,
+                height: `${canvasPixelHeight}px`,
+                imageRendering: 'pixelated',
+              }}
+            />
+          </div>
         </div>
       </div>
     </div>

@@ -41,13 +41,18 @@ export function App() {
 
   useEffect(() => {
     if (urlRoomId) {
-      const hostPlayerId = localStorage.getItem(`pixel_party_host_${urlRoomId}`) || myPlayerId || undefined;
-      // If we haven't joined the room or don't have our player registered yet, prompt join modal
-      if (!myPlayerId || !nickname || room?.id !== urlRoomId) {
-        setJoinModalOpen(true);
-        // Auto-join if we already have stored credentials
-        if (nickname) {
-          socketClient.joinRoom(urlRoomId, nickname, hostPlayerId);
+      const hostToken = localStorage.getItem(`pixel_party_host_${urlRoomId}`);
+      if (hostToken) {
+        // We are the creator / host screen of this room
+        setJoinModalOpen(false);
+        socketClient.joinAsHost(urlRoomId, hostToken);
+      } else {
+        // We are a player joining from phone or browser
+        if (!myPlayerId || !nickname || room?.id !== urlRoomId) {
+          setJoinModalOpen(true);
+          if (nickname) {
+            socketClient.joinRoom(urlRoomId, nickname, myPlayerId || undefined);
+          }
         }
       }
     }

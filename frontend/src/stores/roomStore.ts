@@ -5,9 +5,10 @@ interface RoomState {
   room: Room | null;
   players: Player[];
   isHost: boolean;
+  isHostSpectator: boolean;
   isHostPeekActive: boolean; // For host spectator toggle in Blind Mosaic mode
 
-  setRoom: (room: Room, isHost: boolean) => void;
+  setRoom: (room: Room, isHost: boolean, isHostSpectator?: boolean) => void;
   updateRoomConfig: (room: Room) => void;
   setStatus: (status: RoomStatus) => void;
   setRevealStep: (step: number) => void;
@@ -22,9 +23,10 @@ export const useRoomStore = create<RoomState>((set) => ({
   room: null,
   players: [],
   isHost: false,
+  isHostSpectator: false,
   isHostPeekActive: false,
 
-  setRoom: (room, isHost) => set({ room, isHost }),
+  setRoom: (room, isHost, isHostSpectator = false) => set({ room, isHost, isHostSpectator }),
 
   updateRoomConfig: (room) => set({ room }),
 

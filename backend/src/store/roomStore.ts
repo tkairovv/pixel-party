@@ -156,6 +156,29 @@ export class RoomStore {
     return true;
   }
 
+  public joinHost(
+    roomId: string,
+    socketId: string,
+    hostId: string
+  ): { isHost: boolean; hostId: string } | { error: string } {
+    const roomData = this.rooms.get(roomId);
+    if (!roomData) {
+      return { error: 'Room not found' };
+    }
+
+    if (roomData.room.hostId !== hostId) {
+      return { error: 'Invalid host credentials' };
+    }
+
+    roomData.socketToPlayer.set(socketId, hostId);
+    roomData.playerToSocket.set(hostId, socketId);
+    if (!roomData.pixelStats.has(hostId)) roomData.pixelStats.set(hostId, 0);
+    if (!roomData.undoStacks.has(hostId)) roomData.undoStacks.set(hostId, []);
+    if (!roomData.redoStacks.has(hostId)) roomData.redoStacks.set(hostId, []);
+
+    return { isHost: true, hostId };
+  }
+
   public joinPlayer(
     roomId: string,
     nickname: string,
@@ -220,6 +243,7 @@ export class RoomStore {
       joinedAt: Date.now(),
       pixelCount: 0,
       teamSector,
+      isHostSpectator: false,
     };
 
     roomData.players.set(playerId, player);
@@ -228,11 +252,6 @@ export class RoomStore {
     roomData.pixelStats.set(playerId, 0);
     roomData.undoStacks.set(playerId, []);
     roomData.redoStacks.set(playerId, []);
-
-    // If this is the first player joining, or host hasn't claimed a profile yet, assign host
-    if (roomData.players.size === 1 || !roomData.players.has(roomData.room.hostId)) {
-      roomData.room.hostId = playerId;
-    }
 
     const isHost = roomData.room.hostId === playerId;
 
