@@ -53,13 +53,17 @@ export class RoomStore {
     height?: number;
     gameMode?: GameMode;
     mosaicConfig?: MosaicConfig;
+    id?: string;
+    hostId?: string;
   }): { room: Room; hostId: string } {
-    let roomId = generateRoomId();
-    while (this.rooms.has(roomId)) {
-      roomId = generateRoomId();
+    let roomId = options?.id ? options.id.toUpperCase() : generateRoomId();
+    if (!options?.id) {
+      while (this.rooms.has(roomId)) {
+        roomId = generateRoomId();
+      }
     }
 
-    const hostId = generatePlayerId();
+    const hostId = options?.hostId || generatePlayerId();
     const width = options?.width || config.canvasWidth;
     const height = options?.height || config.canvasHeight;
     const gameMode: GameMode = options?.gameMode || 'classic';

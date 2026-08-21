@@ -2,11 +2,14 @@ import { useState, useEffect } from 'react';
 import { useRoomStore } from './stores/roomStore.js';
 import { usePlayerStore } from './stores/playerStore.js';
 import { useUIStore } from './stores/uiStore.js';
+import { useAuthStore } from './stores/authStore.js';
 import { socketClient } from './socket/socketClient.js';
 import { HomePage } from './components/HomePage.js';
 import { LobbyPage } from './components/LobbyPage.js';
 import { GamePage } from './components/GamePage.js';
 import { JoinModal } from './components/JoinModal.js';
+import { AuthPage } from './components/AuthPage.js';
+import { DashboardPage } from './components/DashboardPage.js';
 import { ToastContainer } from './components/Toast.js';
 import { ConnectionBanner } from './components/ConnectionBanner.js';
 
@@ -15,11 +18,13 @@ export function App() {
   const { room } = useRoomStore();
   const { myPlayerId, nickname } = usePlayerStore();
   const { setJoinModalOpen } = useUIStore();
+  const { init: initAuth } = useAuthStore();
 
-  // Initialize socket client
+  // Initialize socket client + auth session
   useEffect(() => {
     socketClient.init();
-  }, []);
+    initAuth();
+  }, [initAuth]);
 
   // Listen to browser navigation (back/forward)
   useEffect(() => {
@@ -38,6 +43,8 @@ export function App() {
   // Parse room ID from path: /room/:roomId
   const roomMatch = currentPath.match(/^\/room\/([a-zA-Z0-9_-]+)/);
   const urlRoomId = roomMatch ? roomMatch[1].toUpperCase() : null;
+  const isAuth = currentPath.startsWith('/auth');
+  const isDashboard = currentPath.startsWith('/dashboard');
 
   useEffect(() => {
     if (urlRoomId) {
@@ -63,8 +70,14 @@ export function App() {
       <ConnectionBanner />
       <ToastContainer />
 
-      {!urlRoomId && (
-        <HomePage onNavigateRoom={(roomId) => navigateTo(`/room/${roomId}`)} />
+      {isAuth && <AuthPage onNavigate={navigateTo} />}
+
+      {isDashboard && (
+        <DashboardPage onNavigate={navigateTo} onNavigateRoom={(roomId) => navigateTo(`/room/${roomId}`)} />
+      )}
+
+      {!urlRoomId && !isAuth && !isDashboard && (
+        <HomePage onNavigateRoom={(roomId) => navigateTo(`/room/${roomId}`)} onNavigate={navigateTo} />
       )}
 
       {urlRoomId && (

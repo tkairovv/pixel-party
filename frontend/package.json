@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@pixel-party/shared": "*",
+    "@supabase/supabase-js": "^2.112.3",
     "canvas-confetti": "^1.9.4",
     "clsx": "^2.1.1",
     "lucide-react": "^0.475.0",

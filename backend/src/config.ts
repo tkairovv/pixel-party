@@ -9,4 +9,6 @@ export const config = {
   canvasHeight: parseInt(process.env.CANVAS_HEIGHT || '64', 10),
   maxHistorySize: parseInt(process.env.MAX_HISTORY_SIZE || '5000', 10),
   rateLimitMaxPixelsPerSec: parseInt(process.env.RATE_LIMIT_MAX || '120', 10),
+  supabaseUrl: process.env.SUPABASE_URL || 'https://vwytubmpegdumadzxmiq.supabase.co',
+  supabaseServiceKey: process.env.SUPABASE_SERVICE_KEY || '',
 };

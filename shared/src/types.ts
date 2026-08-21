@@ -111,3 +111,15 @@ export interface AppErrorPayload {
   code: string;
   message: string;
 }
+
+export interface RoomRecord {
+  id: string;
+  owner_id: string;
+  host_id: string;
+  status: RoomStatus;
+  game_mode: GameMode;
+  width: number;
+  height: number;
+  mosaic_config: MosaicConfig | null;
+  created_at: string;
+}

@@ -1,21 +1,31 @@
 import React, { useState } from 'react';
-import { Sparkles, Plus, ArrowRight, Paintbrush, Scissors, Palette } from 'lucide-react';
+import { Sparkles, Plus, ArrowRight, Paintbrush, Scissors, Palette, LogIn, LayoutDashboard } from 'lucide-react';
 import { useUIStore } from '../stores/uiStore.js';
+import { useAuthStore } from '../stores/authStore.js';
+import { createRoom } from '../api.js';
 import { GameMode, MosaicConfig } from '@pixel-party/shared';
 
 interface HomePageProps {
   onNavigateRoom: (roomId: string) => void;
+  onNavigate: (path: string) => void;
 }
 
-export const HomePage: React.FC<HomePageProps> = ({ onNavigateRoom }) => {
+export const HomePage: React.FC<HomePageProps> = ({ onNavigateRoom, onNavigate }) => {
   const [joinCode, setJoinCode] = useState('');
   const [selectedSize, setSelectedSize] = useState<number>(64);
   const [gameMode, setGameMode] = useState<GameMode>('blind_mosaic');
   const [sectorsCount, setSectorsCount] = useState<number>(3);
   const [isCreating, setIsCreating] = useState(false);
   const { showToast } = useUIStore();
+  const { user, session, signOut } = useAuthStore();
 
   const handleCreateRoom = async () => {
+    if (!session?.access_token) {
+      showToast('Войдите в аккаунт, чтобы создать комнату', 'warning');
+      onNavigate('/auth');
+      return;
+    }
+
     try {
       setIsCreating(true);
 
@@ -30,22 +40,13 @@ export const HomePage: React.FC<HomePageProps> = ({ onNavigateRoom }) => {
         roundDurationSeconds: 0,
       } : undefined;
 
-      const res = await fetch('/api/rooms', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          width: selectedSize,
-          height: selectedSize,
-          gameMode,
-          mosaicConfig,
-        }),
+      const data = await createRoom(session.access_token, {
+        width: selectedSize,
+        height: selectedSize,
+        gameMode,
+        mosaicConfig,
       });
 
-      if (!res.ok) {
-        throw new Error('Failed to create room');
-      }
-
-      const data = await res.json();
       localStorage.setItem('pixel_party_player_id', data.hostId);
       localStorage.setItem(`pixel_party_host_${data.roomId}`, data.hostId);
       onNavigateRoom(data.roomId);
@@ -90,10 +91,37 @@ export const HomePage: React.FC<HomePageProps> = ({ onNavigateRoom }) => {
         </div>
 
         <div className="flex items-center gap-2">
-          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs font-semibold">
+          <span className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs font-semibold">
             <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
             Live Realtime
           </span>
+
+          {user ? (
+            <>
+              <button
+                onClick={() => onNavigate('/dashboard')}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 hover:text-white rounded-xl text-xs font-semibold transition-all"
+              >
+                <LayoutDashboard className="w-3.5 h-3.5 text-indigo-400" />
+                <span className="hidden md:inline">Дашборд</span>
+              </button>
+              <button
+                onClick={() => signOut()}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 hover:text-white rounded-xl text-xs font-semibold transition-all"
+                title={user.email || ''}
+              >
+                <span className="hidden sm:inline max-w-[120px] truncate">{user.email}</span>
+              </button>
+            </>
+          ) : (
+            <button
+              onClick={() => onNavigate('/auth')}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-semibold transition-all shadow-sm"
+            >
+              <LogIn className="w-3.5 h-3.5" />
+              <span>Войти</span>
+            </button>
+          )}
         </div>
       </header>
 
