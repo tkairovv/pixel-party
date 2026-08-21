@@ -26,7 +26,11 @@ setupSocketHandlers(io, globalRoomStore);
 
 // REST API Endpoints
 app.get('/api/health', (_req, res) => {
-  res.json({ status: 'ok', timestamp: Date.now() });
+  res.json({
+    status: 'ok',
+    timestamp: Date.now(),
+    supabaseConfigured: Boolean(config.supabaseServiceKey),
+  });
 });
 
 // Create Room (authenticated creator)
