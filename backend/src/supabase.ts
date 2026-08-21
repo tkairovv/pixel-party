@@ -26,9 +26,14 @@ export async function getUserFromToken(authHeader: string | undefined): Promise<
 
   try {
     const { data, error } = await getSupabaseAdmin().auth.getUser(token);
-    if (error || !data.user) return null;
+    if (error) {
+      console.error('Supabase auth.getUser error:', error.message);
+      return null;
+    }
+    if (!data.user) return null;
     return data.user;
-  } catch {
+  } catch (e) {
+    console.error('Supabase auth.getUser exception:', e instanceof Error ? e.message : e);
     return null;
   }
 }

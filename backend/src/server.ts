@@ -25,11 +25,21 @@ const io = new Server(server, {
 setupSocketHandlers(io, globalRoomStore);
 
 // REST API Endpoints
-app.get('/api/health', (_req, res) => {
+app.get('/api/health', async (_req, res) => {
+  let supabaseError: string | null = null;
+  if (config.supabaseServiceKey) {
+    try {
+      const { error } = await getSupabaseAdmin().auth.getUser('invalid-token');
+      supabaseError = error ? error.message : null;
+    } catch (e) {
+      supabaseError = e instanceof Error ? e.message : String(e);
+    }
+  }
   res.json({
     status: 'ok',
     timestamp: Date.now(),
     supabaseConfigured: Boolean(config.supabaseServiceKey),
+    supabaseError,
   });
 });
 
